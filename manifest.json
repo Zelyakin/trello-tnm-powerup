@@ -1,0 +1,19 @@
+{
+  "name": "T&M",
+  "details": "Учет затраченного времени и материалов на карточках Trello",
+  "icon": {
+    "url": "./img/icon.svg"
+  },
+  "author": "Ваше имя",
+  "capabilities": [
+    "card-buttons",
+    "card-badges",
+    "card-detail-badges",
+    "show-settings"
+  ],
+  "connectors": {
+    "iframe": {
+      "url": "./index.html"
+    }
+  }
+}

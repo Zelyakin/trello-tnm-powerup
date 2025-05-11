@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>T&M Менеджер</title>
+  <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+</head>
+<body>
+<div class="container">
+  <h2>Время и материалы</h2>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="time">Время</div>
+    <div class="tab" data-tab="materials">Материалы</div>
+    <div class="tab" data-tab="history">История</div>
+  </div>
+
+  <div class="tab-content active" id="time-tab">
+    <h3>Добавить время</h3>
+    <div class="form-group">
+      <label for="time-hours">Часы:</label>
+      <input type="number" id="time-hours" min="0.1" step="0.1" placeholder="0.0">
+    </div>
+    <div class="form-group">
+      <label for="time-description">Описание:</label>
+      <textarea id="time-description" placeholder="Описание выполненных работ"></textarea>
+    </div>
+    <button class="mod-primary" id="save-time">Сохранить</button>
+
+    <div class="summary" id="time-summary">
+      <!-- Здесь будет отображаться общее время -->
+    </div>
+  </div>
+
+  <div class="tab-content" id="materials-tab">
+    <h3>Добавить материал</h3>
+    <div class="form-group">
+      <label for="material-name">Название:</label>
+      <input type="text" id="material-name" placeholder="Название материала">
+    </div>
+    <div class="form-group">
+      <label for="material-quantity">Количество:</label>
+      <input type="number" id="material-quantity" min="1" step="1" value="1">
+    </div>
+    <div class="form-group">
+      <label for="material-cost">Стоимость:</label>
+      <input type="number" id="material-cost" min="0" step="0.01" placeholder="0.00">
+    </div>
+    <button class="mod-primary" id="save-material">Сохранить</button>
+
+    <div class="materials-list" id="materials-list">
+      <!-- Здесь будет список материалов -->
+    </div>
+  </div>
+
+  <div class="tab-content" id="history-tab">
+    <div class="history-list" id="history-list">
+      <!-- Здесь будет история записей -->
+    </div>
+  </div>
+</div>
+
+<script src="../js/storage.js"></script>
+<script>
+  const t = TrelloPowerUp.iframe();
+
+  // Загрузка данных при открытии
+  function loadData() {
+    TnMStorage.getCardData(t)
+            .then(function(data) {
+              // Заполняем сводку по времени
+              document.getElementById('time-summary').innerHTML =
+                      `<p>Общее затраченное время: <strong>${data.time || 0}</strong> ч</p>`;
+
+              // Заполняем список материалов
+              const materialsList = document.getElementById('materials-list');
+              materialsList.innerHTML = '';
+
+              if (data.materials && data.materials.length > 0) {
+                data.materials.forEach(function(material) {
+                  const item = document.createElement('div');
+                  item.className = 'material-item';
+                  item.innerHTML = `
+                <span class="material-name">${material.name}</span>
+                <span class="material-quantity">${material.quantity} шт.</span>
+                <span class="material-cost">${material.cost} руб.</span>
+              `;
+                  materialsList.appendChild(item);
+                });
+              } else {
+                materialsList.innerHTML = '<p>Материалы не добавлены</p>';
+              }
+
+              // Заполняем историю
+              const historyList = document.getElementById('history-list');
+              historyList.innerHTML = '';
+
+              if (data.history && data.history.length > 0) {
+                data.history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                data.history.forEach(function(record) {
+                  const item = document.createElement('div');
+                  item.className = 'history-item';
+
+                  if (record.type === 'time') {
+                    const date = new Date(record.date).toLocaleDateString();
+                    item.innerHTML = `
+                  <div class="history-date">${date}</div>
+                  <div class="history-type">Время</div>
+                  <div class="history-details">
+                    <strong>${record.amount} ч</strong> - ${record.description}
+                  </div>
+                `;
+                  } else if (record.type === 'material') {
+                    const material = data.materials.find(m => m.id === record.materialId);
+                    if (material) {
+                      const date = new Date(record.date).toLocaleDateString();
+                      item.innerHTML = `
+                    <div class="history-date">${date}</div>
+                    <div class="history-type">Материал</div>
+                    <div class="history-details">
+                      <strong>${material.name}</strong> - ${material.quantity} шт. × ${material.cost} руб.
+                    </div>
+                  `;
+                    }
+                  }
+
+                  historyList.appendChild(item);
+                });
+              } else {
+                historyList.innerHTML = '<p>История пуста</p>';
+              }
+            });
+  }
+
+  // Управление табами
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+    });
+  });
+
+  // Сохранение времени
+  document.getElementById('save-time').addEventListener('click', function() {
+    const hours = document.getElementById('time-hours').value;
+    const description = document.getElementById('time-description').value;
+
+    if (!hours || hours <= 0) {
+      alert('Пожалуйста, укажите корректное время');
+      return;
+    }
+
+    TnMStorage.addTimeRecord(t, hours, description)
+            .then(function() {
+              // Очистка формы
+              document.getElementById('time-hours').value = '';
+              document.getElementById('time-description').value = '';
+
+              // Обновление данных
+              loadData();
+
+              // Уведомление Trello об обновлении бейджей
+              t.card('id')
+                      .then(function(card) {
+                        return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
+                      })
+                      .then(function() {
+                        t.closePopup();
+                      });
+            });
+  });
+
+  // Сохранение материала
+  document.getElementById('save-material').addEventListener('click', function() {
+    const name = document.getElementById('material-name').value;
+    const quantity = document.getElementById('material-quantity').value;
+    const cost = document.getElementById('material-cost').value;
+
+    if (!name) {
+      alert('Пожалуйста, укажите название материала');
+      return;
+    }
+
+    TnMStorage.addMaterial(t, name, quantity, cost)
+            .then(function() {
+              // Очистка формы
+              document.getElementById('material-name').value = '';
+              document.getElementById('material-quantity').value = '1';
+              document.getElementById('material-cost').value = '';
+
+              // Обновление данных
+              loadData();
+            });
+  });
+
+  // Загрузка данных при открытии
+  document.addEventListener('DOMContentLoaded', loadData);
+
+  // Обработка изменений данных
+  t.render(function() {
+    loadData();
+  });
+</script>
+</body>
+</html>
