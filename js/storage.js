@@ -78,10 +78,17 @@ const TnMStorage = {
 
     // Форматирование времени для отображения
     formatTime: function(days, hours, minutes) {
-        let result = '';
-        if (days > 0) result += days + 'd/';
-        if (hours > 0 || days > 0) result += hours + 'h/';
-        result += minutes + 'm';
-        return result;
+        let result = [];
+
+        // Добавляем компоненты, только если они больше нуля
+        if (days > 0) result.push(days + 'd');
+        if (hours > 0) result.push(hours + 'h');
+        if (minutes > 0) result.push(minutes + 'm');
+
+        // Если все компоненты равны нулю, показываем хотя бы минуты
+        if (result.length === 0) return '0m';
+
+        // Объединяем через пробел
+        return result.join(' ');
     }
 };
