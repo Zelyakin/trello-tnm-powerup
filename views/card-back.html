@@ -1,3 +1,4 @@
+<!-- views/card-back.html (модификация существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -150,7 +151,7 @@
                       <span class="tnm-time-date">${formatDate(entry.date)}</span>
                       <span class="tnm-time-user">${entry.memberName || 'Пользователь'}</span>
                     </div>
-                    <div class="tnm-time-hours">${entry.amount} ч</div>
+                    <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
                   </div>
                   ${entry.description ? `<div class="tnm-time-description">${entry.description}</div>` : ''}
                 </div>
@@ -170,7 +171,7 @@
                     entriesHTML += `
               <div class="tnm-time-total">
                 <div>ИТОГО:</div>
-                <div>${data.time || 0} ч</div>
+                <div>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</div>
               </div>
             `;
 

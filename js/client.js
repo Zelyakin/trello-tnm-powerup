@@ -1,3 +1,4 @@
+// js/client.js (модификация существующего файла)
 /* global TrelloPowerUp */
 
 // Инициализация Power-Up
@@ -9,7 +10,7 @@ TrelloPowerUp.initialize({
             text: 'T&M',
             callback: function(t) {
                 return t.popup({
-                    title: 'T&M Менеджер',
+                    title: 'Учет времени',
                     url: './views/card-detail.html',
                     height: 400
                 });
@@ -23,9 +24,14 @@ TrelloPowerUp.initialize({
             .then(function(data) {
                 if (!data) return [];
 
+                // Проверяем, есть ли затраченное время
+                const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
+
+                if (!hasTime) return [];
+
                 return [{
-                    text: data.time ? data.time + ' ч' : '',
-                    color: data.time ? 'blue' : 'light-gray'
+                    text: TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0),
+                    color: 'blue'
                 }];
             })
             .catch(function(err) {
@@ -40,13 +46,16 @@ TrelloPowerUp.initialize({
             .then(function(data) {
                 if (!data) return [];
 
+                // Проверяем, есть ли затраченное время
+                const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
+
                 return [{
-                    title: 'T&M',
-                    text: data.time ? 'Затраченное время: ' + data.time + ' ч' : 'Нет данных',
-                    color: data.time ? 'blue' : null,
+                    title: 'Время',
+                    text: hasTime ? 'Затраченное время: ' + TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0) : 'Нет данных',
+                    color: hasTime ? 'blue' : null,
                     callback: function(t) {
                         return t.popup({
-                            title: 'Управление T&M',
+                            title: 'Учет времени',
                             url: './views/card-detail.html',
                             height: 400
                         });
@@ -58,7 +67,7 @@ TrelloPowerUp.initialize({
     // Новый раздел на обратной стороне карточки
     'card-back-section': function(t, options) {
         return {
-            title: 'T&M',
+            title: 'Учет времени',
             icon: './img/icon.svg', // Иконка раздела
             content: {
                 type: 'iframe',

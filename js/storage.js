@@ -1,11 +1,13 @@
+// js/storage.js (модификация существующего файла)
 /* Утилиты для работы с хранилищем Trello */
 
 const TnMStorage = {
     // Получить данные T&M для карточки
     getCardData: function(t) {
         return t.get('card', 'shared', 'tnm-data', {
-            time: 0,
-            materials: [],
+            days: 0,
+            hours: 0,
+            minutes: 0,
             history: []
         });
     },
@@ -16,7 +18,7 @@ const TnMStorage = {
     },
 
     // Добавить запись о затраченном времени
-    addTimeRecord: function(t, hours, description) {
+    addTimeRecord: function(t, days, hours, minutes, description) {
         // Получаем информацию о текущем пользователе
         return t.member('id', 'fullName', 'username')
             .then(function(member) {
@@ -26,7 +28,9 @@ const TnMStorage = {
                         const newRecord = {
                             id: Date.now(),
                             type: 'time',
-                            amount: parseFloat(hours),
+                            days: parseInt(days) || 0,
+                            hours: parseInt(hours) || 0,
+                            minutes: parseInt(minutes) || 0,
                             description: description,
                             date: new Date().toISOString(),
                             memberId: member.id,
@@ -34,7 +38,20 @@ const TnMStorage = {
                         };
 
                         // Обновляем общее время
-                        data.time = (parseFloat(data.time) || 0) + parseFloat(hours);
+                        data.days = (parseInt(data.days) || 0) + parseInt(days || 0);
+                        data.hours = (parseInt(data.hours) || 0) + parseInt(hours || 0);
+                        data.minutes = (parseInt(data.minutes) || 0) + parseInt(minutes || 0);
+
+                        // Нормализуем значения (60 минут = 1 час, 24 часа = 1 день)
+                        while (data.minutes >= 60) {
+                            data.minutes -= 60;
+                            data.hours += 1;
+                        }
+
+                        while (data.hours >= 24) {
+                            data.hours -= 24;
+                            data.days += 1;
+                        }
 
                         // Добавляем запись в историю
                         if (!data.history) data.history = [];
@@ -43,37 +60,6 @@ const TnMStorage = {
                         // Сохраняем обновленные данные
                         return TnMStorage.saveCardData(t, data);
                     });
-            });
-    },
-
-    // Остальные методы остаются без изменений...
-    addMaterial: function(t, name, quantity, cost) {
-        return this.getCardData(t)
-            .then(function(data) {
-                // Создаем новую запись о материале
-                const newMaterial = {
-                    id: Date.now(),
-                    name: name,
-                    quantity: parseFloat(quantity),
-                    cost: parseFloat(cost),
-                    date: new Date().toISOString()
-                };
-
-                // Добавляем материал в список
-                if (!data.materials) data.materials = [];
-                data.materials.push(newMaterial);
-
-                // Создаем запись в истории
-                if (!data.history) data.history = [];
-                data.history.push({
-                    id: newMaterial.id,
-                    type: 'material',
-                    materialId: newMaterial.id,
-                    date: new Date().toISOString()
-                });
-
-                // Сохраняем обновленные данные
-                return TnMStorage.saveCardData(t, data);
             });
     },
 
@@ -88,5 +74,14 @@ const TnMStorage = {
     // Сохранить настройки доски
     saveBoardSettings: function(t, settings) {
         return t.set('board', 'shared', 'tnm-settings', settings);
+    },
+
+    // Форматирование времени для отображения
+    formatTime: function(days, hours, minutes) {
+        let result = '';
+        if (days > 0) result += days + 'd/';
+        if (hours > 0 || days > 0) result += hours + 'h/';
+        result += minutes + 'm';
+        return result;
     }
 };

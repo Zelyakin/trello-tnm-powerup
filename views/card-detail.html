@@ -1,3 +1,4 @@
+<!-- views/card-detail.html (модификация существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -9,19 +10,26 @@
 </head>
 <body>
 <div class="container">
-  <h2>Время и материалы</h2>
+  <h2>Учет времени</h2>
 
   <div class="tabs">
     <div class="tab active" data-tab="time">Время</div>
-    <div class="tab" data-tab="materials">Материалы</div>
     <div class="tab" data-tab="history">История</div>
   </div>
 
   <div class="tab-content active" id="time-tab">
     <h3>Добавить время</h3>
     <div class="form-group">
+      <label for="time-days">Дни:</label>
+      <input type="number" id="time-days" min="0" step="1" value="0">
+    </div>
+    <div class="form-group">
       <label for="time-hours">Часы:</label>
-      <input type="number" id="time-hours" min="0.1" step="0.1" placeholder="0.0">
+      <input type="number" id="time-hours" min="0" max="23" step="1" value="0">
+    </div>
+    <div class="form-group">
+      <label for="time-minutes">Минуты:</label>
+      <input type="number" id="time-minutes" min="0" max="59" step="1" value="0">
     </div>
     <div class="form-group">
       <label for="time-description">Описание:</label>
@@ -31,27 +39,6 @@
 
     <div class="summary" id="time-summary">
       <!-- Здесь будет отображаться общее время -->
-    </div>
-  </div>
-
-  <div class="tab-content" id="materials-tab">
-    <h3>Добавить материал</h3>
-    <div class="form-group">
-      <label for="material-name">Название:</label>
-      <input type="text" id="material-name" placeholder="Название материала">
-    </div>
-    <div class="form-group">
-      <label for="material-quantity">Количество:</label>
-      <input type="number" id="material-quantity" min="1" step="1" value="1">
-    </div>
-    <div class="form-group">
-      <label for="material-cost">Стоимость:</label>
-      <input type="number" id="material-cost" min="0" step="0.01" placeholder="0.00">
-    </div>
-    <button class="mod-primary" id="save-material">Сохранить</button>
-
-    <div class="materials-list" id="materials-list">
-      <!-- Здесь будет список материалов -->
     </div>
   </div>
 
@@ -72,26 +59,7 @@
             .then(function(data) {
               // Заполняем сводку по времени
               document.getElementById('time-summary').innerHTML =
-                      `<p>Общее затраченное время: <strong>${data.time || 0}</strong> ч</p>`;
-
-              // Заполняем список материалов
-              const materialsList = document.getElementById('materials-list');
-              materialsList.innerHTML = '';
-
-              if (data.materials && data.materials.length > 0) {
-                data.materials.forEach(function(material) {
-                  const item = document.createElement('div');
-                  item.className = 'material-item';
-                  item.innerHTML = `
-              <span class="material-name">${material.name}</span>
-              <span class="material-quantity">${material.quantity} шт.</span>
-              <span class="material-cost">${material.cost} руб.</span>
-            `;
-                  materialsList.appendChild(item);
-                });
-              } else {
-                materialsList.innerHTML = '<p>Материалы не добавлены</p>';
-              }
+                      `<p>Общее затраченное время: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
 
               // Заполняем историю
               const historyList = document.getElementById('history-list');
@@ -101,33 +69,24 @@
                 data.history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                 data.history.forEach(function(record) {
-                  const item = document.createElement('div');
-                  item.className = 'history-item';
-
                   if (record.type === 'time') {
-                    const date = new Date(record.date).toLocaleDateString();
-                    item.innerHTML = `
-                <div class="history-date">${date}</div>
-                <div class="history-type">Время</div>
-                <div class="history-details">
-                  <strong>${record.amount} ч</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
-                </div>
-              `;
-                  } else if (record.type === 'material') {
-                    const material = data.materials.find(m => m.id === record.materialId);
-                    if (material) {
-                      const date = new Date(record.date).toLocaleDateString();
-                      item.innerHTML = `
-                  <div class="history-date">${date}</div>
-                  <div class="history-type">Материал</div>
-                  <div class="history-details">
-                    <strong>${material.name}</strong> - ${material.quantity} шт. × ${material.cost} руб.
-                  </div>
-                `;
-                    }
-                  }
+                    const item = document.createElement('div');
+                    item.className = 'history-item';
 
-                  historyList.appendChild(item);
+                    const date = new Date(record.date).toLocaleDateString();
+                    // Форматируем время для записи в истории
+                    const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
+
+                    item.innerHTML = `
+                      <div class="history-date">${date}</div>
+                      <div class="history-type">Время</div>
+                      <div class="history-details">
+                        <strong>${timeStr}</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
+                      </div>
+                    `;
+
+                    historyList.appendChild(item);
+                  }
                 });
               } else {
                 historyList.innerHTML = '<p>История пуста</p>';
@@ -148,18 +107,22 @@
 
   // Сохранение времени
   document.getElementById('save-time').addEventListener('click', function() {
-    const hours = document.getElementById('time-hours').value;
+    const days = parseInt(document.getElementById('time-days').value) || 0;
+    const hours = parseInt(document.getElementById('time-hours').value) || 0;
+    const minutes = parseInt(document.getElementById('time-minutes').value) || 0;
     const description = document.getElementById('time-description').value;
 
-    if (!hours || hours <= 0) {
-      alert('Пожалуйста, укажите корректное время');
+    if (days === 0 && hours === 0 && minutes === 0) {
+      alert('Пожалуйста, укажите время');
       return;
     }
 
-    TnMStorage.addTimeRecord(t, hours, description)
+    TnMStorage.addTimeRecord(t, days, hours, minutes, description)
             .then(function() {
               // Очистка формы
-              document.getElementById('time-hours').value = '';
+              document.getElementById('time-days').value = '0';
+              document.getElementById('time-hours').value = '0';
+              document.getElementById('time-minutes').value = '0';
               document.getElementById('time-description').value = '';
 
               // Обновление данных
@@ -173,29 +136,6 @@
                       .then(function() {
                         t.closePopup();
                       });
-            });
-  });
-
-  // Сохранение материала
-  document.getElementById('save-material').addEventListener('click', function() {
-    const name = document.getElementById('material-name').value;
-    const quantity = document.getElementById('material-quantity').value;
-    const cost = document.getElementById('material-cost').value;
-
-    if (!name) {
-      alert('Пожалуйста, укажите название материала');
-      return;
-    }
-
-    TnMStorage.addMaterial(t, name, quantity, cost)
-            .then(function() {
-              // Очистка формы
-              document.getElementById('material-name').value = '';
-              document.getElementById('material-quantity').value = '1';
-              document.getElementById('material-cost').value = '';
-
-              // Обновление данных
-              loadData();
             });
   });
 
