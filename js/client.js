@@ -1,6 +1,25 @@
 // js/client.js (модификация существующего файла)
 /* global TrelloPowerUp */
 
+// Функция миграции старых данных в новый формат
+function migrateData(t, data) {
+    // Если в данных есть старое поле time, но нет новых полей
+    if (data && data.time !== undefined && (data.days === undefined || data.hours === undefined || data.minutes === undefined)) {
+        console.log('Миграция данных из старого формата в новый');
+
+        // Конвертируем время из часов в новый формат
+        const totalMinutes = Math.round(data.time * 60);
+        data.days = Math.floor(totalMinutes / (24 * 60)) || 0;
+        data.hours = Math.floor((totalMinutes % (24 * 60)) / 60) || 0;
+        data.minutes = totalMinutes % 60 || 0;
+
+        // Сохраняем обновленные данные
+        t.set('card', 'shared', 'tnm-data', data);
+    }
+
+    return data;
+}
+
 // Добавим функцию форматирования времени непосредственно в этот файл
 function formatTime(days, hours, minutes) {
     days = parseInt(days) || 0;
@@ -39,6 +58,9 @@ TrelloPowerUp.initialize({
     'card-badges': function(t, options) {
         return t.get('card', 'shared', 'tnm-data')
             .then(function(data) {
+                // Мигрируем данные, если нужно
+                data = migrateData(t, data);
+
                 if (!data) return [];
 
                 // Проверяем, есть ли затраченное время
