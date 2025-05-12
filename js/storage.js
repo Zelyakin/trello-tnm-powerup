@@ -78,10 +78,69 @@ const TnMStorage = {
 
     // Форматирование времени для отображения
     formatTime: function(days, hours, minutes) {
-        let result = '';
-        if (days > 0) result += days + 'd/';
-        if (hours > 0 || days > 0) result += hours + 'h/';
-        result += minutes + 'm';
-        return result;
+        let result = [];
+
+        // Добавляем компоненты, только если они больше нуля
+        if (days > 0) result.push(days + 'd');
+        if (hours > 0) result.push(hours + 'h');
+        if (minutes > 0) result.push(minutes + 'm');
+
+        // Если все компоненты равны нулю, показываем хотя бы минуты
+        if (result.length === 0) return '0m';
+
+        // Объединяем через пробел
+        return result.join(' ');
+    },
+
+    // Удаление записи о времени
+    deleteTimeRecord: function (t, recordId) {
+        return this.getCardData(t)
+            .then(function (data) {
+                // Находим запись по id
+                const recordIndex = data.history.findIndex(r => r.id == recordId);
+
+                if (recordIndex === -1) {
+                    return Promise.reject('Запись не найдена');
+                }
+
+                // Получаем данные о записи
+                const record = data.history[recordIndex];
+
+                if (record.type !== 'time') {
+                    return Promise.reject('Запись не является записью о времени');
+                }
+
+                // Вычитаем время из общего счетчика
+                data.days = Math.max(0, (data.days || 0) - (record.days || 0));
+                data.hours = Math.max(0, (data.hours || 0) - (record.hours || 0));
+                data.minutes = Math.max(0, (data.minutes || 0) - (record.minutes || 0));
+
+                // Нормализуем оставшееся время (на случай, если были отрицательные значения)
+                if (data.minutes < 0) {
+                    data.hours -= Math.ceil(Math.abs(data.minutes) / 60);
+                    data.minutes = 60 - (Math.abs(data.minutes) % 60);
+                    if (data.minutes == 60) {
+                        data.minutes = 0;
+                    }
+                }
+
+                if (data.hours < 0) {
+                    data.days -= Math.ceil(Math.abs(data.hours) / 24);
+                    data.hours = 24 - (Math.abs(data.hours) % 24);
+                    if (data.hours == 24) {
+                        data.hours = 0;
+                    }
+                }
+
+                if (data.days < 0) {
+                    data.days = 0;
+                }
+
+                // Удаляем запись из истории
+                data.history.splice(recordIndex, 1);
+
+                // Сохраняем обновленные данные
+                return TnMStorage.saveCardData(t, data);
+            });
     }
 };
