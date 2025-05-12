@@ -29,10 +29,25 @@ TrelloPowerUp.initialize({
 
                 if (!hasTime) return [];
 
-                return [{
-                    text: TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0),
-                    color: 'blue'
-                }];
+                // Импортируем TnMStorage для форматирования времени
+                return t.loadModuleData('./js/storage.js')
+                    .then(function(moduleData) {
+                        return [{
+                            text: TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0),
+                            color: 'blue'
+                        }];
+                    })
+                    .catch(function() {
+                        // Если не удалось загрузить модуль, форматируем время вручную
+                        let timeText = '';
+                        if (data.days > 0) timeText += data.days + 'd ';
+                        if (data.hours > 0 || data.days > 0) timeText += data.hours + 'h ';
+                        if (data.minutes > 0 || timeText === '') timeText += data.minutes + 'm';
+                        return [{
+                            text: timeText.trim(),
+                            color: 'blue'
+                        }];
+                    });
             })
             .catch(function(err) {
                 console.error('Ошибка получения данных:', err);
@@ -49,9 +64,18 @@ TrelloPowerUp.initialize({
                 // Проверяем, есть ли затраченное время
                 const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
 
+                // Форматируем время для отображения
+                let timeText = '';
+                if (hasTime) {
+                    if (data.days > 0) timeText += data.days + 'd ';
+                    if (data.hours > 0 || data.days > 0) timeText += data.hours + 'h ';
+                    if (data.minutes > 0 || timeText === '') timeText += data.minutes + 'm';
+                    timeText = timeText.trim();
+                }
+
                 return [{
                     title: 'Время',
-                    text: hasTime ? 'Затраченное время: ' + TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0) : 'Нет данных',
+                    text: hasTime ? 'Затраченное время: ' + timeText : 'Нет данных',
                     color: hasTime ? 'blue' : null,
                     callback: function(t) {
                         return t.popup({

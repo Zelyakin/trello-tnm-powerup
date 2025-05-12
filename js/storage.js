@@ -92,3 +92,5 @@ const TnMStorage = {
         return result.join(' ');
     }
 };
+
+window.TnMStorage = TnMStorage;
