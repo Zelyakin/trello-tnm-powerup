@@ -10,6 +10,7 @@
     "card-badges",
     "card-detail-badges",
     "card-back-section",
+    "board-buttons",
     "show-settings"
   ],
   "connectors": {

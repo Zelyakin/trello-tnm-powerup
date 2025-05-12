@@ -68,6 +68,24 @@ TrelloPowerUp.initialize({
         };
     },
 
+    // Кнопка в меню доски для очистки кеша
+    'board-buttons': function(t, options) {
+        return [{
+            icon: {
+                dark: './img/icon-white.svg',
+                light: './img/icon.svg'
+            },
+            text: 'Обновить T&M',
+            callback: function(t) {
+                return t.popup({
+                    title: 'Обновление T&M Power-Up',
+                    url: `./views/clear-cache.html?v=${Date.now()}`,
+                    height: 200
+                });
+            }
+        }];
+    },
+
     // Пункт в меню настроек Power-Up
     'show-settings': function(t, options) {
         return t.popup({
