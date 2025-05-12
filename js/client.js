@@ -41,7 +41,7 @@ TrelloPowerUp.initialize({
                 if (!data) return [];
 
                 return [{
-                    title: 'Время и материалы',
+                    title: 'T&M',
                     text: data.time ? 'Затраченное время: ' + data.time + ' ч' : 'Нет данных',
                     color: data.time ? 'blue' : null,
                     callback: function(t) {
@@ -58,7 +58,7 @@ TrelloPowerUp.initialize({
     // Новый раздел на обратной стороне карточки
     'card-back-section': function(t, options) {
         return {
-            title: 'Время и Материалы',
+            title: 'T&M',
             icon: './img/icon.svg', // Иконка раздела
             content: {
                 type: 'iframe',

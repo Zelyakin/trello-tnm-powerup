@@ -110,9 +110,9 @@
         // Обработчик для открытия детальной информации
         document.getElementById('open-details').addEventListener('click', function(e) {
             e.preventDefault();
-            t.popup({
-                title: 'T&M Менеджер',
-                url: './card-detail.html',
+            t.navigate({
+                url: t.signUrl('./card-detail.html'),
+                context: 'popup',
                 height: 400
             });
         });
