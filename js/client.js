@@ -1,6 +1,23 @@
 // js/client.js (модификация существующего файла)
 /* global TrelloPowerUp */
 
+// Добавим функцию форматирования времени непосредственно в этот файл
+function formatTime(days, hours, minutes) {
+    days = parseInt(days) || 0;
+    hours = parseInt(hours) || 0;
+    minutes = parseInt(minutes) || 0;
+
+    let result = [];
+
+    if (days > 0) result.push(days + 'd');
+    if (hours > 0) result.push(hours + 'h');
+    if (minutes > 0) result.push(minutes + 'm');
+
+    if (result.length === 0) return '0m';
+
+    return result.join(' ');
+}
+
 // Инициализация Power-Up
 TrelloPowerUp.initialize({
     // Кнопка в меню карточки
@@ -29,25 +46,11 @@ TrelloPowerUp.initialize({
 
                 if (!hasTime) return [];
 
-                // Импортируем TnMStorage для форматирования времени
-                return t.loadModuleData('./js/storage.js')
-                    .then(function(moduleData) {
-                        return [{
-                            text: TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0),
-                            color: 'blue'
-                        }];
-                    })
-                    .catch(function() {
-                        // Если не удалось загрузить модуль, форматируем время вручную
-                        let timeText = '';
-                        if (data.days > 0) timeText += data.days + 'd ';
-                        if (data.hours > 0 || data.days > 0) timeText += data.hours + 'h ';
-                        if (data.minutes > 0 || timeText === '') timeText += data.minutes + 'm';
-                        return [{
-                            text: timeText.trim(),
-                            color: 'blue'
-                        }];
-                    });
+                // Используем нашу локальную функцию форматирования
+                return [{
+                    text: formatTime(data.days, data.hours, data.minutes),
+                    color: 'blue'
+                }];
             })
             .catch(function(err) {
                 console.error('Ошибка получения данных:', err);
@@ -64,19 +67,24 @@ TrelloPowerUp.initialize({
                 // Проверяем, есть ли затраченное время
                 const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
 
-                // Форматируем время для отображения
-                let timeText = '';
-                if (hasTime) {
-                    if (data.days > 0) timeText += data.days + 'd ';
-                    if (data.hours > 0 || data.days > 0) timeText += data.hours + 'h ';
-                    if (data.minutes > 0 || timeText === '') timeText += data.minutes + 'm';
-                    timeText = timeText.trim();
-                }
+                if (!hasTime) return [{
+                    title: 'Время',
+                    text: 'Нет данных',
+                    color: null,
+                    callback: function(t) {
+                        return t.popup({
+                            title: 'Учет времени',
+                            url: './views/card-detail.html',
+                            height: 400
+                        });
+                    }
+                }];
 
+                // Используем нашу локальную функцию форматирования
                 return [{
                     title: 'Время',
-                    text: hasTime ? 'Затраченное время: ' + timeText : 'Нет данных',
-                    color: hasTime ? 'blue' : null,
+                    text: 'Затраченное время: ' + formatTime(data.days, data.hours, data.minutes),
+                    color: 'blue',
                     callback: function(t) {
                         return t.popup({
                             title: 'Учет времени',
@@ -88,20 +96,19 @@ TrelloPowerUp.initialize({
             });
     },
 
-    // Новый раздел на обратной стороне карточки
+    // Остальной код без изменений...
     'card-back-section': function(t, options) {
         return {
             title: 'Учет времени',
-            icon: './img/icon.svg', // Иконка раздела
+            icon: './img/icon.svg',
             content: {
                 type: 'iframe',
                 url: t.signUrl('./views/card-back.html'),
-                height: 200 // Высота раздела в пикселях
+                height: 200
             }
         };
     },
 
-    // Кнопка в меню доски для очистки кеша
     'board-buttons': function(t, options) {
         return [{
             icon: {
@@ -119,7 +126,6 @@ TrelloPowerUp.initialize({
         }];
     },
 
-    // Пункт в меню настроек Power-Up
     'show-settings': function(t, options) {
         return t.popup({
             title: 'Настройки T&M',
