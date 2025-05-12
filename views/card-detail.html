@@ -83,10 +83,10 @@
                   const item = document.createElement('div');
                   item.className = 'material-item';
                   item.innerHTML = `
-                <span class="material-name">${material.name}</span>
-                <span class="material-quantity">${material.quantity} шт.</span>
-                <span class="material-cost">${material.cost} руб.</span>
-              `;
+              <span class="material-name">${material.name}</span>
+              <span class="material-quantity">${material.quantity} шт.</span>
+              <span class="material-cost">${material.cost} руб.</span>
+            `;
                   materialsList.appendChild(item);
                 });
               } else {
@@ -107,23 +107,23 @@
                   if (record.type === 'time') {
                     const date = new Date(record.date).toLocaleDateString();
                     item.innerHTML = `
-                  <div class="history-date">${date}</div>
-                  <div class="history-type">Время</div>
-                  <div class="history-details">
-                    <strong>${record.amount} ч</strong> - ${record.description}
-                  </div>
-                `;
+                <div class="history-date">${date}</div>
+                <div class="history-type">Время</div>
+                <div class="history-details">
+                  <strong>${record.amount} ч</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
+                </div>
+              `;
                   } else if (record.type === 'material') {
                     const material = data.materials.find(m => m.id === record.materialId);
                     if (material) {
                       const date = new Date(record.date).toLocaleDateString();
                       item.innerHTML = `
-                    <div class="history-date">${date}</div>
-                    <div class="history-type">Материал</div>
-                    <div class="history-details">
-                      <strong>${material.name}</strong> - ${material.quantity} шт. × ${material.cost} руб.
-                    </div>
-                  `;
+                  <div class="history-date">${date}</div>
+                  <div class="history-type">Материал</div>
+                  <div class="history-details">
+                    <strong>${material.name}</strong> - ${material.quantity} шт. × ${material.cost} руб.
+                  </div>
+                `;
                     }
                   }
 

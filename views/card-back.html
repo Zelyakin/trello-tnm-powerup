@@ -19,36 +19,50 @@
             margin-bottom: 12px;
         }
 
-        .tnm-info-item {
+        .tnm-time-title {
+            font-weight: bold;
+            margin: 12px 0 8px 0;
+            border-bottom: 1px solid #DFE1E6;
+            padding-bottom: 4px;
+        }
+
+        .tnm-time-entry {
+            padding: 8px 0;
+            border-bottom: 1px solid #DFE1E6;
+            font-size: 13px;
+        }
+
+        .tnm-time-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
         }
 
-        .tnm-info-label {
-            font-weight: bold;
+        .tnm-time-date {
             color: #5E6C84;
+            font-size: 12px;
         }
 
-        .tnm-info-value {
+        .tnm-time-user {
+            font-weight: bold;
+        }
+
+        .tnm-time-hours {
+            color: #0079BF;
+            font-weight: bold;
+        }
+
+        .tnm-time-description {
+            margin-top: 4px;
+            font-size: 12px;
             color: #172B4D;
         }
 
-        .tnm-materials-title {
-            font-weight: bold;
-            margin: 12px 0 8px 0;
-        }
-
-        .tnm-material {
-            padding: 6px 0;
-            border-bottom: 1px solid #DFE1E6;
-        }
-
-        .tnm-material-details {
+        .tnm-time-total {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
-            color: #5E6C84;
+            padding: 8px 0;
+            font-weight: bold;
+            border-top: 2px solid #DFE1E6;
             margin-top: 4px;
         }
 
@@ -58,34 +72,20 @@
             text-align: right;
             margin-top: 12px;
         }
+
+        .tnm-empty-state {
+            padding: 12px;
+            text-align: center;
+            color: #5E6C84;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
 <div class="back-section">
-    <div class="tnm-info-block">
-        <div class="tnm-info-item">
-            <span class="tnm-info-label">Общее время:</span>
-            <span class="tnm-info-value" id="total-time">Загрузка...</span>
-        </div>
-        <div class="tnm-info-item">
-            <span class="tnm-info-label">Стоимость времени:</span>
-            <span class="tnm-info-value" id="time-cost">Загрузка...</span>
-        </div>
-        <div class="tnm-info-item">
-            <span class="tnm-info-label">Стоимость материалов:</span>
-            <span class="tnm-info-value" id="materials-cost">Загрузка...</span>
-        </div>
-        <div class="tnm-info-item">
-            <span class="tnm-info-label">Итоговая стоимость:</span>
-            <span class="tnm-info-value" id="total-cost">Загрузка...</span>
-        </div>
-    </div>
-
-    <div class="tnm-materials-title">Последние материалы:</div>
-    <div id="materials-list">
-        <div class="tnm-material">
-            <div>Загрузка данных...</div>
-        </div>
+    <div class="tnm-time-title">Затраченное время:</div>
+    <div id="time-entries-list">
+        <div class="tnm-empty-state">Загрузка данных...</div>
     </div>
 
     <div class="tnm-footer">
@@ -96,6 +96,12 @@
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
+
+    // Функция форматирования даты
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString();
+    }
 
     // Загрузка данных при открытии
     document.addEventListener('DOMContentLoaded', function() {
@@ -119,77 +125,82 @@
 
     // Загрузка данных
     function loadData() {
-        Promise.all([
-            TnMStorage.getCardData(t),
-            TnMStorage.getBoardSettings(t)
-        ])
-            .then(function(results) {
-                const data = results[0];
-                const settings = results[1];
+        TnMStorage.getCardData(t)
+            .then(function(data) {
+                const timeEntriesList = document.getElementById('time-entries-list');
 
-                // Отображение общего времени
-                document.getElementById('total-time').textContent =
-                    (data.time || 0) + ' ч';
+                // Фильтруем только записи о времени
+                const timeEntries = data.history ? data.history.filter(entry => entry.type === 'time') : [];
 
-                // Расчет стоимости времени
-                const timeCost = (data.time || 0) * (settings.hourlyRate || 0);
-                document.getElementById('time-cost').textContent =
-                    timeCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+                if (timeEntries.length > 0) {
+                    // Сортируем по дате (от новых к старым)
+                    timeEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-                // Расчет стоимости материалов
-                let materialsCost = 0;
-                if (data.materials && data.materials.length > 0) {
-                    materialsCost = data.materials.reduce(function(sum, material) {
-                        return sum + (material.quantity * material.cost);
-                    }, 0);
-                }
-                document.getElementById('materials-cost').textContent =
-                    materialsCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+                    let entriesHTML = '';
 
-                // Расчет общей стоимости
-                const totalCost = timeCost + materialsCost;
-                document.getElementById('total-cost').textContent =
-                    totalCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+                    // Ограничиваем количество записей до 5 для компактности
+                    const displayEntries = timeEntries.slice(0, 5);
 
-                // Отображение последних материалов
-                const materialsList = document.getElementById('materials-list');
-                materialsList.innerHTML = '';
-
-                if (data.materials && data.materials.length > 0) {
-                    // Отображаем только последние 3 материала
-                    const lastMaterials = data.materials.slice(-3);
-
-                    lastMaterials.forEach(function(material) {
-                        const item = document.createElement('div');
-                        item.className = 'tnm-material';
-                        item.innerHTML = `
-              <div>${material.name}</div>
-              <div class="tnm-material-details">
-                <span>${material.quantity} шт.</span>
-                <span>${material.cost} ${settings.currency || 'RUB'}</span>
-              </div>
-            `;
-                        materialsList.appendChild(item);
+                    // Отображаем каждую запись
+                    displayEntries.forEach(function(entry) {
+                        entriesHTML += `
+                <div class="tnm-time-entry">
+                  <div class="tnm-time-header">
+                    <div>
+                      <span class="tnm-time-date">${formatDate(entry.date)}</span>
+                      <span class="tnm-time-user">${entry.memberName || 'Пользователь'}</span>
+                    </div>
+                    <div class="tnm-time-hours">${entry.amount} ч</div>
+                  </div>
+                  ${entry.description ? `<div class="tnm-time-description">${entry.description}</div>` : ''}
+                </div>
+              `;
                     });
 
-                    if (data.materials.length > 3) {
-                        const moreItem = document.createElement('div');
-                        moreItem.className = 'tnm-material';
-                        moreItem.innerHTML = `<div style="text-align: center; font-style: italic;">...и еще ${data.materials.length - 3}</div>`;
-                        materialsList.appendChild(moreItem);
+                    // Добавляем информацию о скрытых записях, если они есть
+                    if (timeEntries.length > 5) {
+                        entriesHTML += `
+                <div class="tnm-empty-state">
+                  ...и еще ${timeEntries.length - 5} ${getNounPluralForm(timeEntries.length - 5, 'запись', 'записи', 'записей')}
+                </div>
+              `;
                     }
+
+                    // Добавляем итоговую строку
+                    entriesHTML += `
+              <div class="tnm-time-total">
+                <div>ИТОГО:</div>
+                <div>${data.time || 0} ч</div>
+              </div>
+            `;
+
+                    timeEntriesList.innerHTML = entriesHTML;
                 } else {
-                    materialsList.innerHTML = '<div class="tnm-material">Материалы не добавлены</div>';
+                    timeEntriesList.innerHTML = '<div class="tnm-empty-state">Записи о затраченном времени отсутствуют</div>';
                 }
             })
             .catch(function(err) {
                 console.error('Ошибка загрузки данных:', err);
-                document.getElementById('total-time').textContent = 'Ошибка загрузки';
-                document.getElementById('time-cost').textContent = 'Ошибка загрузки';
-                document.getElementById('materials-cost').textContent = 'Ошибка загрузки';
-                document.getElementById('total-cost').textContent = 'Ошибка загрузки';
-                document.getElementById('materials-list').innerHTML = '<div class="tnm-material">Ошибка загрузки данных</div>';
+                document.getElementById('time-entries-list').innerHTML =
+                    '<div class="tnm-empty-state">Ошибка загрузки данных</div>';
             });
+    }
+
+    // Функция для правильного склонения существительных
+    function getNounPluralForm(number, one, two, five) {
+        let n = Math.abs(number);
+        n %= 100;
+        if (n >= 5 && n <= 20) {
+            return five;
+        }
+        n %= 10;
+        if (n === 1) {
+            return one;
+        }
+        if (n >= 2 && n <= 4) {
+            return two;
+        }
+        return five;
     }
 </script>
 </body>

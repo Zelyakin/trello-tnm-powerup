@@ -17,30 +17,36 @@ const TnMStorage = {
 
     // Добавить запись о затраченном времени
     addTimeRecord: function(t, hours, description) {
-        return this.getCardData(t)
-            .then(function(data) {
-                // Создаем новую запись
-                const newRecord = {
-                    id: Date.now(),
-                    type: 'time',
-                    amount: parseFloat(hours),
-                    description: description,
-                    date: new Date().toISOString()
-                };
+        // Получаем информацию о текущем пользователе
+        return t.member('id', 'fullName', 'username')
+            .then(function(member) {
+                return TnMStorage.getCardData(t)
+                    .then(function(data) {
+                        // Создаем новую запись с информацией о пользователе
+                        const newRecord = {
+                            id: Date.now(),
+                            type: 'time',
+                            amount: parseFloat(hours),
+                            description: description,
+                            date: new Date().toISOString(),
+                            memberId: member.id,
+                            memberName: member.fullName || member.username
+                        };
 
-                // Обновляем общее время
-                data.time = (parseFloat(data.time) || 0) + parseFloat(hours);
+                        // Обновляем общее время
+                        data.time = (parseFloat(data.time) || 0) + parseFloat(hours);
 
-                // Добавляем запись в историю
-                if (!data.history) data.history = [];
-                data.history.push(newRecord);
+                        // Добавляем запись в историю
+                        if (!data.history) data.history = [];
+                        data.history.push(newRecord);
 
-                // Сохраняем обновленные данные
-                return TnMStorage.saveCardData(t, data);
+                        // Сохраняем обновленные данные
+                        return TnMStorage.saveCardData(t, data);
+                    });
             });
     },
 
-    // Добавить материал
+    // Остальные методы остаются без изменений...
     addMaterial: function(t, name, quantity, cost) {
         return this.getCardData(t)
             .then(function(data) {
