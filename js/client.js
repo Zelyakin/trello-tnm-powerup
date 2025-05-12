@@ -55,6 +55,19 @@ TrelloPowerUp.initialize({
             });
     },
 
+    // Новый раздел на обратной стороне карточки
+    'card-back-section': function(t, options) {
+        return {
+            title: 'Время и Материалы',
+            icon: './img/icon.svg', // Иконка раздела
+            content: {
+                type: 'iframe',
+                url: t.signUrl('./views/card-back.html'),
+                height: 200 // Высота раздела в пикселях
+            }
+        };
+    },
+
     // Пункт в меню настроек Power-Up
     'show-settings': function(t, options) {
         return t.popup({

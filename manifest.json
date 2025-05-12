@@ -9,6 +9,7 @@
     "card-buttons",
     "card-badges",
     "card-detail-badges",
+    "card-back-section",
     "show-settings"
   ],
   "connectors": {

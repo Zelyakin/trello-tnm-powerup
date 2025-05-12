@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>T&M Информация</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <style>
+        /* Дополнительные стили для обратной стороны карточки */
+        .back-section {
+            padding: 8px;
+        }
+
+        .tnm-info-block {
+            background-color: #F4F5F7;
+            border-radius: 3px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .tnm-info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .tnm-info-label {
+            font-weight: bold;
+            color: #5E6C84;
+        }
+
+        .tnm-info-value {
+            color: #172B4D;
+        }
+
+        .tnm-materials-title {
+            font-weight: bold;
+            margin: 12px 0 8px 0;
+        }
+
+        .tnm-material {
+            padding: 6px 0;
+            border-bottom: 1px solid #DFE1E6;
+        }
+
+        .tnm-material-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #5E6C84;
+            margin-top: 4px;
+        }
+
+        .tnm-footer {
+            font-size: 11px;
+            color: #5E6C84;
+            text-align: right;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+<div class="back-section">
+    <div class="tnm-info-block">
+        <div class="tnm-info-item">
+            <span class="tnm-info-label">Общее время:</span>
+            <span class="tnm-info-value" id="total-time">Загрузка...</span>
+        </div>
+        <div class="tnm-info-item">
+            <span class="tnm-info-label">Стоимость времени:</span>
+            <span class="tnm-info-value" id="time-cost">Загрузка...</span>
+        </div>
+        <div class="tnm-info-item">
+            <span class="tnm-info-label">Стоимость материалов:</span>
+            <span class="tnm-info-value" id="materials-cost">Загрузка...</span>
+        </div>
+        <div class="tnm-info-item">
+            <span class="tnm-info-label">Итоговая стоимость:</span>
+            <span class="tnm-info-value" id="total-cost">Загрузка...</span>
+        </div>
+    </div>
+
+    <div class="tnm-materials-title">Последние материалы:</div>
+    <div id="materials-list">
+        <div class="tnm-material">
+            <div>Загрузка данных...</div>
+        </div>
+    </div>
+
+    <div class="tnm-footer">
+        <a href="#" id="open-details">Открыть полную информацию</a>
+    </div>
+</div>
+
+<script src="../js/storage.js"></script>
+<script>
+    const t = TrelloPowerUp.iframe();
+
+    // Загрузка данных при открытии
+    document.addEventListener('DOMContentLoaded', function() {
+        loadData();
+
+        // Обработчик для открытия детальной информации
+        document.getElementById('open-details').addEventListener('click', function(e) {
+            e.preventDefault();
+            t.popup({
+                title: 'T&M Менеджер',
+                url: './card-detail.html',
+                height: 400
+            });
+        });
+    });
+
+    // Обработка изменений данных
+    t.render(function() {
+        loadData();
+    });
+
+    // Загрузка данных
+    function loadData() {
+        Promise.all([
+            TnMStorage.getCardData(t),
+            TnMStorage.getBoardSettings(t)
+        ])
+            .then(function(results) {
+                const data = results[0];
+                const settings = results[1];
+
+                // Отображение общего времени
+                document.getElementById('total-time').textContent =
+                    (data.time || 0) + ' ч';
+
+                // Расчет стоимости времени
+                const timeCost = (data.time || 0) * (settings.hourlyRate || 0);
+                document.getElementById('time-cost').textContent =
+                    timeCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+
+                // Расчет стоимости материалов
+                let materialsCost = 0;
+                if (data.materials && data.materials.length > 0) {
+                    materialsCost = data.materials.reduce(function(sum, material) {
+                        return sum + (material.quantity * material.cost);
+                    }, 0);
+                }
+                document.getElementById('materials-cost').textContent =
+                    materialsCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+
+                // Расчет общей стоимости
+                const totalCost = timeCost + materialsCost;
+                document.getElementById('total-cost').textContent =
+                    totalCost.toFixed(2) + ' ' + (settings.currency || 'RUB');
+
+                // Отображение последних материалов
+                const materialsList = document.getElementById('materials-list');
+                materialsList.innerHTML = '';
+
+                if (data.materials && data.materials.length > 0) {
+                    // Отображаем только последние 3 материала
+                    const lastMaterials = data.materials.slice(-3);
+
+                    lastMaterials.forEach(function(material) {
+                        const item = document.createElement('div');
+                        item.className = 'tnm-material';
+                        item.innerHTML = `
+              <div>${material.name}</div>
+              <div class="tnm-material-details">
+                <span>${material.quantity} шт.</span>
+                <span>${material.cost} ${settings.currency || 'RUB'}</span>
+              </div>
+            `;
+                        materialsList.appendChild(item);
+                    });
+
+                    if (data.materials.length > 3) {
+                        const moreItem = document.createElement('div');
+                        moreItem.className = 'tnm-material';
+                        moreItem.innerHTML = `<div style="text-align: center; font-style: italic;">...и еще ${data.materials.length - 3}</div>`;
+                        materialsList.appendChild(moreItem);
+                    }
+                } else {
+                    materialsList.innerHTML = '<div class="tnm-material">Материалы не добавлены</div>';
+                }
+            })
+            .catch(function(err) {
+                console.error('Ошибка загрузки данных:', err);
+                document.getElementById('total-time').textContent = 'Ошибка загрузки';
+                document.getElementById('time-cost').textContent = 'Ошибка загрузки';
+                document.getElementById('materials-cost').textContent = 'Ошибка загрузки';
+                document.getElementById('total-cost').textContent = 'Ошибка загрузки';
+                document.getElementById('materials-list').innerHTML = '<div class="tnm-material">Ошибка загрузки данных</div>';
+            });
+    }
+</script>
+</body>
+</html>
