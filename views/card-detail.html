@@ -95,8 +95,15 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <!-- Форма добавления времени с одним полем -->
+    <!-- Форма добавления времени (переставлены поля) -->
     <h3>Добавить время</h3>
+    <div class="form-group">
+      <label for="member-select">Пользователь:</label>
+      <select id="member-select">
+        <!-- Список пользователей будет заполнен динамически -->
+        <option value="loading">Загрузка пользователей...</option>
+      </select>
+    </div>
     <div class="form-group">
       <label for="time-input">Время:</label>
       <input type="text" id="time-input" placeholder="Пример: 1d 2h 30m">
@@ -106,13 +113,6 @@
     <div class="form-group">
       <label for="time-description">Описание:</label>
       <textarea id="time-description" placeholder="Описание выполненных работ"></textarea>
-    </div>
-    <div class="form-group">
-      <label for="member-select">Пользователь:</label>
-      <select id="member-select">
-        <!-- Список пользователей будет заполнен динамически -->
-        <option value="loading">Загрузка пользователей...</option>
-      </select>
     </div>
     <button class="mod-primary" id="save-time">Сохранить</button>
 
