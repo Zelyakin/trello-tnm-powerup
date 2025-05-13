@@ -111,12 +111,30 @@ const TnMStorage = {
         });
 
         // Получаем все карточки на доске
-        return t.cards('id')
+        return t.cards('all')
             .then(function(cards) {
                 // Создаем массив промисов для удаления данных с каждой карточки
-                const resetPromises = cards.map(function(card) {
-                    return t.set('card', 'shared', 'tnm-data', null, card.id);
+                const resetPromises = [];
+
+                // Для Trello API нам нужно использовать метод t.remove для очистки данных карточек
+                cards.forEach(function(card) {
+                    // Мы не можем напрямую удалить данные с карточки указав только её ID
+                    // Вместо этого мы запомним все ID карточек, и пометим их для удаления
+                    // при следующем открытии
+                    resetPromises.push(
+                        t.set('board', 'shared', `tnm-card-reset-${card.id}`, true)
+                    );
                 });
+
+                // Сохраняем список всех карточек для очистки
+                resetPromises.push(
+                    t.set('board', 'shared', 'tnm-cards-to-reset', cards.map(card => card.id))
+                );
+
+                // Устанавливаем флаг очистки данных
+                resetPromises.push(
+                    t.set('board', 'shared', 'tnm-data-reset-requested', true)
+                );
 
                 // Добавляем промис для сброса настроек доски
                 resetPromises.push(resetBoardSettings);
@@ -127,6 +145,32 @@ const TnMStorage = {
             .then(function() {
                 // Обновляем маркер времени последнего обновления
                 return t.set('board', 'shared', 'tnm-cache-version', Date.now());
+            });
+    },
+
+    // Новая функция: проверка и очистка данных для карточки при открытии
+    checkAndClearCardData: function(t) {
+        return Promise.all([
+            t.card('id'),
+            t.get('board', 'shared', 'tnm-data-reset-requested', false)
+        ])
+            .then(function([card, resetRequested]) {
+                if (resetRequested) {
+                    // Проверяем, нужно ли очистить данные для этой карточки
+                    return t.get('board', 'shared', `tnm-card-reset-${card.id}`, false)
+                        .then(function(needsReset) {
+                            if (needsReset) {
+                                // Очищаем данные карточки
+                                return t.set('card', 'shared', 'tnm-data', null)
+                                    .then(function() {
+                                        // Удаляем флаг сброса для этой карточки
+                                        return t.remove('board', 'shared', `tnm-card-reset-${card.id}`);
+                                    });
+                            }
+                            return Promise.resolve();
+                        });
+                }
+                return Promise.resolve();
             });
     },
 
