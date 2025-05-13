@@ -39,24 +39,32 @@ function formatTime(days, hours, minutes) {
 
 // Инициализация Power-Up
 TrelloPowerUp.initialize({
-    // Кнопка в меню карточки
+    // Функция инициализации - проверяем необходимость очистки данных
     'card-buttons': function(t, options) {
-        return [{
-            icon: './img/icon.svg',
-            text: 'T&M',
-            callback: function(t) {
-                return t.popup({
-                    title: 'Учет времени',
-                    url: './views/card-detail.html',
-                    height: 400
-                });
-            }
-        }];
+        // Сначала проверяем, нужно ли очистить данные карточки
+        return TnMStorage.checkAndClearCardData(t)
+            .then(function() {
+                return [{
+                    icon: './img/icon.svg',
+                    text: 'T&M',
+                    callback: function(t) {
+                        return t.popup({
+                            title: 'Учет времени',
+                            url: './views/card-detail.html',
+                            height: 400
+                        });
+                    }
+                }];
+            });
     },
 
     // Бейдж на карточке
     'card-badges': function(t, options) {
-        return t.get('card', 'shared', 'tnm-data')
+        // Сначала проверяем, нужно ли очистить данные карточки
+        return TnMStorage.checkAndClearCardData(t)
+            .then(function() {
+                return t.get('card', 'shared', 'tnm-data');
+            })
             .then(function(data) {
                 // Мигрируем данные, если нужно
                 data = migrateData(t, data);
@@ -82,7 +90,11 @@ TrelloPowerUp.initialize({
 
     // Детальный бейдж при открытии карточки
     'card-detail-badges': function(t, options) {
-        return t.get('card', 'shared', 'tnm-data')
+        // Сначала проверяем, нужно ли очистить данные карточки
+        return TnMStorage.checkAndClearCardData(t)
+            .then(function() {
+                return t.get('card', 'shared', 'tnm-data');
+            })
             .then(function(data) {
                 if (!data) return [];
 
@@ -142,7 +154,7 @@ TrelloPowerUp.initialize({
                 return t.popup({
                     title: 'Обновление T&M Power-Up',
                     url: `./views/clear-cache.html?v=${Date.now()}`,
-                    height: 200
+                    height: 300
                 });
             }
         }];
