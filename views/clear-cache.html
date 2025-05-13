@@ -111,9 +111,20 @@
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     }
 
+    .confirmation-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+
+    .confirmation-text {
+      margin-bottom: 16px;
+    }
+
     .confirmation-buttons {
-      margin-top: 12px;
-      text-align: right;
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
     }
 
     .confirmation-buttons button {
@@ -155,12 +166,12 @@
 <!-- Диалог подтверждения полного сброса -->
 <div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
   <div class="confirmation-content">
-    <h3>Подтверждение сброса данных</h3>
-    <p>Вы уверены, что хотите удалить ВСЕ данные о затраченном времени со ВСЕХ карточек на доске?</p>
-    <p>Это действие невозможно отменить!</p>
+    <div class="confirmation-title">Обновление T&M Power-Up</div>
+    <p class="confirmation-text">Вы уверены, что хотите удалить ВСЕ данные о затраченном времени со ВСЕХ карточек на доске?</p>
+    <p class="confirmation-text">Это действие невозможно отменить!</p>
     <div class="confirmation-buttons">
       <button class="cancel-btn" id="cancel-reset">Отмена</button>
-      <button class="mod-danger" id="confirm-reset">Удалить все данные</button>
+      <button class="mod-danger" id="confirm-reset">Удалить</button>
     </div>
   </div>
 </div>
