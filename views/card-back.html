@@ -145,10 +145,7 @@
 
     // Загрузка данных
     function loadData() {
-        TnMStorage.checkAndClearCardData(t)
-            .then(function() {
-                return TnMStorage.getCardData(t);
-            })
+        TnMStorage.getCardData(t)
             .then(function(data) {
                 const timeEntriesList = document.getElementById('time-entries-list');
 

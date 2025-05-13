@@ -134,10 +134,7 @@
 
   // Загрузка данных при открытии
   function loadData() {
-    TnMStorage.checkAndClearCardData(t)
-            .then(function() {
-              return TnMStorage.getCardData(t);
-            })
+    TnMStorage.getCardData(t)
             .then(function(data) {
               // Заполняем сводку по времени
               document.getElementById('time-summary').innerHTML =
