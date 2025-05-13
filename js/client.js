@@ -1,3 +1,4 @@
+// js/client.js (модификация существующего файла)
 /* global TrelloPowerUp */
 
 // Функция миграции старых данных в новый формат
@@ -141,8 +142,8 @@ TrelloPowerUp.initialize({
                 callback: function(t) {
                     return t.popup({
                         title: 'Экспорт данных о времени',
-                        url: './views/export-time.html',
-                        height: 300
+                        url: `./views/export-time.html?v=${Date.now()}`,
+                        height: 400  // Увеличиваем высоту с 300 до 400
                     });
                 }
             },
