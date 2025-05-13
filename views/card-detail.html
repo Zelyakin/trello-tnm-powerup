@@ -1,4 +1,3 @@
-<!-- views/card-detail.html (модификация существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -8,7 +7,7 @@
   <link rel="stylesheet" href="../css/style.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
   <style>
-    /* Добавляем стили для кнопки удаления */
+    /* Существующие стили без изменений */
     .delete-record {
       color: #CF513D;
       cursor: pointer;
@@ -72,14 +71,12 @@
       background-color: #DFE1E6;
     }
 
-    /* Добавляем стили для помощи по формату ввода */
     .input-help {
       font-size: 12px;
       color: #5E6C84;
       margin-top: 4px;
     }
 
-    /* Стиль для ошибки валидации */
     .error-message {
       color: #CF513D;
       font-size: 12px;
@@ -110,6 +107,13 @@
       <label for="time-description">Описание:</label>
       <textarea id="time-description" placeholder="Описание выполненных работ"></textarea>
     </div>
+    <div class="form-group">
+      <label for="member-select">Пользователь:</label>
+      <select id="member-select">
+        <!-- Список пользователей будет заполнен динамически -->
+        <option value="loading">Загрузка пользователей...</option>
+      </select>
+    </div>
     <button class="mod-primary" id="save-time">Сохранить</button>
 
     <div class="summary" id="time-summary">
@@ -137,11 +141,12 @@
 </div>
 
 <script src="../js/storage.js"></script>
+<script src="../js/board-members.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
 
-  // Функция для парсинга строки времени (новая)
+  // Функция для парсинга строки времени (без изменений)
   function parseTimeString(timeStr) {
     const result = {
       days: 0,
@@ -176,7 +181,46 @@
     return result;
   }
 
-  // Загрузка данных при открытии
+  // Загрузка пользователей доски
+  function loadBoardMembers() {
+    const memberSelect = document.getElementById('member-select');
+    memberSelect.innerHTML = '<option value="loading">Загрузка пользователей...</option>';
+
+    // Сначала получаем текущего пользователя
+    BoardMembers.getCurrentMember(t)
+            .then(function(currentMember) {
+              // Затем получаем всех пользователей доски
+              return BoardMembers.getBoardMembers(t)
+                      .then(function(members) {
+                        memberSelect.innerHTML = '';
+
+                        // Сортируем пользователей так, чтобы текущий был первым
+                        members.sort(function(a, b) {
+                          if (a.id === currentMember.id) return -1;
+                          if (b.id === currentMember.id) return 1;
+                          return a.fullName.localeCompare(b.fullName);
+                        });
+
+                        // Создаем опции для каждого пользователя
+                        members.forEach(function(member) {
+                          const option = document.createElement('option');
+                          option.value = JSON.stringify({
+                            id: member.id,
+                            name: member.fullName || member.username
+                          });
+                          option.text = member.fullName || member.username;
+                          option.selected = member.id === currentMember.id;
+                          memberSelect.appendChild(option);
+                        });
+                      });
+            })
+            .catch(function(err) {
+              console.error('Ошибка при загрузке пользователей:', err);
+              memberSelect.innerHTML = '<option value="error">Ошибка загрузки пользователей</option>';
+            });
+  }
+
+  // Загрузка данных при открытии (без изменений)
   function loadData() {
     TnMStorage.getCardData(t)
             .then(function(data) {
@@ -229,19 +273,17 @@
             });
   }
 
-  // Функция отображения диалога подтверждения удаления
+  // Остальные функции без изменений
   function showDeleteConfirmation(recordId) {
     currentRecordToDelete = recordId;
     document.getElementById('confirmation-dialog').style.display = 'flex';
   }
 
-  // Функция скрытия диалога подтверждения
   function hideDeleteConfirmation() {
     document.getElementById('confirmation-dialog').style.display = 'none';
     currentRecordToDelete = null;
   }
 
-  // Функция удаления записи
   function deleteRecord(recordId) {
     TnMStorage.deleteTimeRecord(t, recordId)
             .then(function() {
@@ -271,11 +313,21 @@
     });
   });
 
-  // Сохранение времени (изменено для работы с единым полем ввода)
+  // Сохранение времени (изменено для использования выбранного пользователя)
   document.getElementById('save-time').addEventListener('click', function() {
     const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
     const timeError = document.getElementById('time-error');
+    const memberSelect = document.getElementById('member-select');
+
+    // Проверяем, что выбран пользователь
+    if (memberSelect.value === 'loading' || memberSelect.value === 'error') {
+      alert('Пожалуйста, дождитесь загрузки пользователей или перезагрузите страницу');
+      return;
+    }
+
+    // Получаем данные выбранного пользователя
+    const selectedMember = JSON.parse(memberSelect.value);
 
     // Парсим строку времени
     const time = parseTimeString(timeInput);
@@ -296,7 +348,45 @@
       return;
     }
 
-    TnMStorage.addTimeRecord(t, time.days, time.hours, time.minutes, description)
+    // Получаем данные карточки
+    TnMStorage.getCardData(t)
+            .then(function(data) {
+              // Создаем новую запись с информацией о выбранном пользователе
+              const newRecord = {
+                id: Date.now(),
+                type: 'time',
+                days: parseInt(time.days) || 0,
+                hours: parseInt(time.hours) || 0,
+                minutes: parseInt(time.minutes) || 0,
+                description: description,
+                date: new Date().toISOString(),
+                memberId: selectedMember.id,
+                memberName: selectedMember.name
+              };
+
+              // Обновляем общее время
+              data.days = (parseInt(data.days) || 0) + parseInt(time.days || 0);
+              data.hours = (parseInt(data.hours) || 0) + parseInt(time.hours || 0);
+              data.minutes = (parseInt(data.minutes) || 0) + parseInt(time.minutes || 0);
+
+              // Нормализуем значения (60 минут = 1 час, 24 часа = 1 день)
+              while (data.minutes >= 60) {
+                data.minutes -= 60;
+                data.hours += 1;
+              }
+
+              while (data.hours >= 24) {
+                data.hours -= 24;
+                data.days += 1;
+              }
+
+              // Добавляем запись в историю
+              if (!data.history) data.history = [];
+              data.history.push(newRecord);
+
+              // Сохраняем обновленные данные
+              return TnMStorage.saveCardData(t, data);
+            })
             .then(function() {
               // Очистка формы
               document.getElementById('time-input').value = '';
@@ -335,7 +425,10 @@
   });
 
   // Загрузка данных при открытии
-  document.addEventListener('DOMContentLoaded', loadData);
+  document.addEventListener('DOMContentLoaded', function() {
+    loadData();
+    loadBoardMembers();
+  });
 
   // Обработка изменений данных
   t.render(function() {
