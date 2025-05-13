@@ -173,6 +173,12 @@
         return date >= startDate && date <= endDate;
     }
 
+    // Функция для конвертации времени в минуты
+    function convertToMinutes(days, hours, minutes) {
+        // 1 день = 8 часов = 480 минут
+        return (days * 8 * 60) + (hours * 60) + minutes;
+    }
+
     // Экспорт данных в CSV
     async function exportToCSV() {
         try {
@@ -208,7 +214,7 @@
             progressContainer.style.display = 'block';
 
             // Инициализируем CSV-контент
-            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Описание работы"\n';
+            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Потраченное время (минуты)","Описание работы"\n';
 
             // Получаем список всех карточек, с которыми работал пользователь
             const knownCardIds = await TnMStorage.getKnownCardIds(t);
@@ -244,14 +250,15 @@
                                     const cardName = card.name.replace(/"/g, '""'); // Экранируем кавычки
                                     const userName = (entry.memberName || 'Пользователь').replace(/"/g, '""');
                                     const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                                    const timeMinutes = convertToMinutes(entry.days || 0, entry.hours || 0, entry.minutes || 0);
                                     const description = (entry.description || '').replace(/"/g, '""');
 
-                                    csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${description}"\n`;
+                                    csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
                                 });
                             } else if (includeEmpty) {
                                 // Добавляем пустую запись для карточки
                                 const cardName = card.name.replace(/"/g, '""');
-                                csvContent += `"","${cardName}","","0m",""\n`;
+                                csvContent += `"","${cardName}","","0m","0",""\n`;
                             }
                         }
                     }

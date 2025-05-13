@@ -7,10 +7,10 @@ function migrateData(t, data) {
     if (data && data.time !== undefined && (data.days === undefined || data.hours === undefined || data.minutes === undefined)) {
         console.log('Миграция данных из старого формата в новый');
 
-        // Конвертируем время из часов в новый формат
+        // Конвертируем время из часов в новый формат (1 день = 8 часов)
         const totalMinutes = Math.round(data.time * 60);
-        data.days = Math.floor(totalMinutes / (24 * 60)) || 0;
-        data.hours = Math.floor((totalMinutes % (24 * 60)) / 60) || 0;
+        data.days = Math.floor(totalMinutes / (8 * 60)) || 0;
+        data.hours = Math.floor((totalMinutes % (8 * 60)) / 60) || 0;
         data.minutes = totalMinutes % 60 || 0;
 
         // Сохраняем обновленные данные
@@ -143,7 +143,7 @@ TrelloPowerUp.initialize({
                     return t.popup({
                         title: 'Экспорт данных о времени',
                         url: `./views/export-time.html?v=${Date.now()}`,
-                        height: 400  // Увеличиваем высоту с 300 до 400
+                        height: 400
                     });
                 }
             },

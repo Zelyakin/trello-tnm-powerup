@@ -121,7 +121,7 @@
     <div class="form-group">
       <label for="time-input">Время:</label>
       <input type="text" id="time-input" placeholder="Пример: 1d 2h 30m">
-      <div class="input-help">Формат: Xd Yh Zm (дни, часы, минуты). Примеры: 2h 30m, 1d 4h, 45m</div>
+      <div class="input-help">Формат: Xd Yh Zm (дни, часы, минуты). 1 день = 8 часов.</div>
       <div class="error-message" id="time-error">Неверный формат. Используйте формат Xd Yh Zm</div>
     </div>
     <div class="form-group">
@@ -351,7 +351,7 @@
     });
   });
 
-  // Сохранение времени (изменено для использования выбранного пользователя и даты)
+  // Сохранение времени
   document.getElementById('save-time').addEventListener('click', function() {
     const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
@@ -424,14 +424,14 @@
               data.hours = (parseInt(data.hours) || 0) + parseInt(time.hours || 0);
               data.minutes = (parseInt(data.minutes) || 0) + parseInt(time.minutes || 0);
 
-              // Нормализуем значения (60 минут = 1 час, 24 часа = 1 день)
+              // Нормализуем значения (60 минут = 1 час, 8 часов = 1 день)
               while (data.minutes >= 60) {
                 data.minutes -= 60;
                 data.hours += 1;
               }
 
-              while (data.hours >= 24) {
-                data.hours -= 24;
+              while (data.hours >= 8) {
+                data.hours -= 8;
                 data.days += 1;
               }
 

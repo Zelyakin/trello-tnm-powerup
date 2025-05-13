@@ -80,14 +80,14 @@ const TnMStorage = {
                         data.hours = (parseInt(data.hours) || 0) + parseInt(hours || 0);
                         data.minutes = (parseInt(data.minutes) || 0) + parseInt(minutes || 0);
 
-                        // Нормализуем значения (60 минут = 1 час, 24 часа = 1 день)
+                        // Нормализуем значения (60 минут = 1 час, 8 часов = 1 день)
                         while (data.minutes >= 60) {
                             data.minutes -= 60;
                             data.hours += 1;
                         }
 
-                        while (data.hours >= 24) {
-                            data.hours -= 24;
+                        while (data.hours >= 8) {
+                            data.hours -= 8;
                             data.days += 1;
                         }
 
@@ -128,7 +128,7 @@ const TnMStorage = {
                 }
 
                 while (data.hours < 0) {
-                    data.hours += 24;
+                    data.hours += 8;
                     data.days -= 1;
                 }
 
@@ -306,6 +306,28 @@ const TnMStorage = {
             .then(function(cards) {
                 return cards.find(card => card.id === cardId);
             });
+    },
+
+    // Преобразовать время в минуты (удобно для расчетов)
+    timeToMinutes: function(days, hours, minutes) {
+        return (days * 8 * 60) + (hours * 60) + minutes;
+    },
+
+    // Преобразовать минуты обратно в структуру времени
+    minutesToTime: function(totalMinutes) {
+        const days = Math.floor(totalMinutes / (8 * 60));
+        totalMinutes -= days * 8 * 60;
+
+        const hours = Math.floor(totalMinutes / 60);
+        totalMinutes -= hours * 60;
+
+        const minutes = totalMinutes;
+
+        return {
+            days: days,
+            hours: hours,
+            minutes: minutes
+        };
     }
 };
 
