@@ -1,4 +1,3 @@
-// js/storage.js (модификация существующего файла)
 /* Утилиты для работы с хранилищем Trello */
 
 const TnMStorage = {
@@ -18,7 +17,7 @@ const TnMStorage = {
     },
 
     // Добавить запись о затраченном времени
-    addTimeRecord: function(t, days, hours, minutes, description) {
+    addTimeRecord: function(t, days, hours, minutes, description, workDate) {
         // Получаем информацию о текущем пользователе
         return t.member('id', 'fullName', 'username')
             .then(function(member) {
@@ -32,7 +31,8 @@ const TnMStorage = {
                             hours: parseInt(hours) || 0,
                             minutes: parseInt(minutes) || 0,
                             description: description,
-                            date: new Date().toISOString(),
+                            date: new Date().toISOString(), // Фактическая дата добавления
+                            workDate: workDate ? new Date(workDate).toISOString() : null, // Дата выполнения работы
                             memberId: member.id,
                             memberName: member.fullName || member.username
                         };
@@ -205,6 +205,16 @@ const TnMStorage = {
 
         // Объединяем через пробел
         return result.join(' ');
+    },
+
+    // Форматирование даты для отображения
+    formatDate: function(dateString) {
+        if (!dateString) return '';
+
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '';
+
+        return date.toLocaleDateString();
     },
 
     // Новая функция: парсинг строки времени
