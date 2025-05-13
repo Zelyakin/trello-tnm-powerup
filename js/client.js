@@ -1,4 +1,3 @@
-// js/client.js (модификация существующего файла)
 /* global TrelloPowerUp */
 
 // Функция миграции старых данных в новый формат
@@ -132,20 +131,36 @@ TrelloPowerUp.initialize({
     },
 
     'board-buttons': function(t, options) {
-        return [{
-            icon: {
-                dark: './img/icon-white.svg',
-                light: './img/icon.svg'
+        return [
+            {
+                icon: {
+                    dark: './img/icon-white.svg',
+                    light: './img/icon.svg'
+                },
+                text: 'Экспорт T&M',
+                callback: function(t) {
+                    return t.popup({
+                        title: 'Экспорт данных о времени',
+                        url: './views/export-time.html',
+                        height: 300
+                    });
+                }
             },
-            text: 'Обновить T&M',
-            callback: function(t) {
-                return t.popup({
-                    title: 'Обновление T&M Power-Up',
-                    url: `./views/clear-cache.html?v=${Date.now()}`,
-                    height: 200
-                });
+            {
+                icon: {
+                    dark: './img/icon-white.svg',
+                    light: './img/icon.svg'
+                },
+                text: 'Обновить T&M',
+                callback: function(t) {
+                    return t.popup({
+                        title: 'Обновление T&M Power-Up',
+                        url: `./views/clear-cache.html?v=${Date.now()}`,
+                        height: 200
+                    });
+                }
             }
-        }];
+        ];
     },
 
     'show-settings': function(t, options) {

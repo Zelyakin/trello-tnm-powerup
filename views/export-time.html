@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Экспорт времени T&M</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 18px;
+        }
+
+        p {
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .button-container {
+            margin-bottom: 20px;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 10px;
+            background-color: #EBECF0;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #0079BF;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-status {
+            font-size: 12px;
+            color: #5E6C84;
+        }
+
+        .error-message {
+            color: #CF513D;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .filter-container {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .date-range {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .date-range input {
+            flex: 1;
+        }
+
+        .checkbox-group {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <h2>Экспорт затраченного времени</h2>
+    <p>Экспорт данных о затраченном времени со всех карточек доски в CSV файл</p>
+
+    <div class="filter-container">
+        <label><strong>Фильтр по дате:</strong></label>
+        <div class="date-range">
+            <div class="form-group">
+                <label for="start-date">С:</label>
+                <input type="date" id="start-date">
+            </div>
+            <div class="form-group">
+                <label for="end-date">По:</label>
+                <input type="date" id="end-date">
+            </div>
+        </div>
+
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="include-empty" checked>
+                Включать карточки без затраченного времени
+            </label>
+        </div>
+    </div>
+
+    <div class="button-container">
+        <button id="export-btn" class="mod-primary">Экспортировать в CSV</button>
+    </div>
+
+    <div class="progress-container" id="progress-container">
+        <div class="progress-bar">
+            <div class="progress-bar-fill" id="progress-bar-fill"></div>
+        </div>
+        <div class="progress-status" id="progress-status">Обработано 0 из 0 карточек</div>
+    </div>
+
+    <p class="error-message" id="error-message"></p>
+</div>
+
+<script src="../js/storage.js"></script>
+<script>
+    const t = TrelloPowerUp.iframe();
+    let totalCards = 0;
+    let processedCards = 0;
+
+    // Функция для инициализации полей даты
+    function initDateFields() {
+        const today = new Date();
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(today.getMonth() - 1);
+
+        // Форматируем даты в формате YYYY-MM-DD
+        document.getElementById('start-date').value = formatDateForInput(oneMonthAgo);
+        document.getElementById('end-date').value = formatDateForInput(today);
+    }
+
+    // Форматирование даты для поля input[type="date"]
+    function formatDateForInput(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // Функция для форматирования даты в читаемом виде
+    function formatDateForDisplay(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '';
+
+        return date.toLocaleDateString();
+    }
+
+    // Функция для проверки, находится ли дата в выбранном диапазоне
+    function isDateInRange(dateString, startDate, endDate) {
+        if (!dateString) return false;
+
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return false;
+
+        // Сбрасываем время до 00:00:00 для корректного сравнения дат
+        date.setHours(0, 0, 0, 0);
+
+        return date >= startDate && date <= endDate;
+    }
+
+    // Экспорт данных в CSV
+    async function exportToCSV() {
+        try {
+            // Получаем параметры фильтрации
+            const startDateValue = document.getElementById('start-date').value;
+            const endDateValue = document.getElementById('end-date').value;
+            const includeEmpty = document.getElementById('include-empty').checked;
+
+            // Преобразуем строки даты в объекты Date
+            const startDate = new Date(startDateValue);
+            const endDate = new Date(endDateValue);
+
+            // Устанавливаем время для корректного сравнения (начало и конец дня)
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+
+            // Проверяем корректность дат
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                showError('Пожалуйста, укажите корректный диапазон дат');
+                return;
+            }
+
+            if (startDate > endDate) {
+                showError('Дата начала не может быть позже даты окончания');
+                return;
+            }
+
+            // Показываем прогресс
+            const progressContainer = document.getElementById('progress-container');
+            const progressBarFill = document.getElementById('progress-bar-fill');
+            const progressStatus = document.getElementById('progress-status');
+
+            progressContainer.style.display = 'block';
+
+            // Получаем все карточки на доске
+            const cards = await t.cards('all');
+            totalCards = cards.length;
+            processedCards = 0;
+
+            progressStatus.textContent = `Обработано 0 из ${totalCards} карточек`;
+
+            // Заголовки CSV
+            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Описание работы"\n';
+
+            // Обрабатываем каждую карточку
+            for (const card of cards) {
+                // Получаем данные T&M для карточки
+                const cardT = t.getContext().makeChild({ card: card.id });
+                const data = await TnMStorage.getCardData(cardT);
+
+                // Фильтруем записи по дате (используем рабочую дату, если она есть, иначе - фактическую)
+                const filteredHistory = data.history ? data.history.filter(entry => {
+                    const dateToCheck = entry.workDate || entry.date;
+                    return entry.type === 'time' && isDateInRange(dateToCheck, startDate, endDate);
+                }) : [];
+
+                // Если есть записи истории или нужно включать пустые карточки
+                if (filteredHistory.length > 0 || includeEmpty) {
+                    if (filteredHistory.length > 0) {
+                        // Добавляем каждую запись в CSV
+                        filteredHistory.forEach(entry => {
+                            const dateStr = formatDateForDisplay(entry.workDate || entry.date);
+                            const cardName = card.name.replace(/"/g, '""'); // Экранируем кавычки
+                            const userName = (entry.memberName || 'Пользователь').replace(/"/g, '""');
+                            const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                            const description = (entry.description || '').replace(/"/g, '""');
+
+                            csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${description}"\n`;
+                        });
+                    } else {
+                        // Добавляем пустую запись для карточки
+                        const cardName = card.name.replace(/"/g, '""');
+                        csvContent += `"","${cardName}","","0m",""\n`;
+                    }
+                }
+
+                // Обновляем прогресс
+                processedCards++;
+                const progressPercent = (processedCards / totalCards) * 100;
+                progressBarFill.style.width = `${progressPercent}%`;
+                progressStatus.textContent = `Обработано ${processedCards} из ${totalCards} карточек`;
+            }
+
+            // Создаем ссылку для скачивания
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            // Формируем имя файла с текущей датой
+            const now = new Date();
+            const fileName = `trello-time-export-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
+
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Скрываем прогресс после небольшой задержки
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                progressBarFill.style.width = '0%';
+            }, 2000);
+
+        } catch (error) {
+            console.error('Ошибка при экспорте данных:', error);
+            showError('Ошибка при экспорте данных: ' + error.message);
+        }
+    }
+
+    // Функция для отображения ошибки
+    function showError(message) {
+        const errorElement = document.getElementById('error-message');
+        errorElement.textContent = message;
+        errorElement.style.display = 'block';
+
+        // Скрываем прогресс
+        document.getElementById('progress-container').style.display = 'none';
+    }
+
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        // Инициализация полей даты
+        initDateFields();
+
+        // Обработчик для кнопки экспорта
+        document.getElementById('export-btn').addEventListener('click', function() {
+            // Скрываем предыдущие ошибки
+            document.getElementById('error-message').style.display = 'none';
+
+            // Начинаем экспорт
+            exportToCSV();
+        });
+    });
+</script>
+</body>
+</html>
