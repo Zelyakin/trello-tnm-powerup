@@ -303,6 +303,11 @@
               } else {
                 historyList.innerHTML = '<p>История пуста</p>';
               }
+              // Синхронизируем данные с хранилищем доски
+              t.card('id')
+                      .then(function(card) {
+                        TnMStorage.syncCardDataWithBoard(t, card.id, data);
+                      });
             });
   }
 

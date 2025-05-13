@@ -77,6 +77,13 @@
         .checkbox-group {
             margin-bottom: 10px;
         }
+
+        .note {
+            font-size: 12px;
+            color: #5E6C84;
+            margin-top: 10px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -109,6 +116,8 @@
         <button id="export-btn" class="mod-primary">Экспортировать в CSV</button>
     </div>
 
+    <p class="note">Примечание: Будут экспортированы данные только для карточек, с которыми работал текущий пользователь.</p>
+
     <div class="progress-container" id="progress-container">
         <div class="progress-bar">
             <div class="progress-bar-fill" id="progress-bar-fill"></div>
@@ -122,8 +131,6 @@
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
-    let totalCards = 0;
-    let processedCards = 0;
 
     // Функция для инициализации полей даты
     function initDateFields() {
@@ -200,46 +207,56 @@
 
             progressContainer.style.display = 'block';
 
-            // Получаем все карточки на доске
-            const cards = await t.cards('all');
+            // Инициализируем CSV-контент
+            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Описание работы"\n';
+
+            // Получаем список всех карточек, с которыми работал пользователь
+            const knownCardIds = await TnMStorage.getKnownCardIds(t);
+            const allCards = await t.cards('all');
+
+            // Фильтруем только известные карточки
+            const cards = allCards.filter(card => knownCardIds.includes(card.id));
+
             totalCards = cards.length;
             processedCards = 0;
 
             progressStatus.textContent = `Обработано 0 из ${totalCards} карточек`;
 
-            // Заголовки CSV
-            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Описание работы"\n';
-
             // Обрабатываем каждую карточку
             for (const card of cards) {
-                // Получаем данные T&M для карточки
-                const cardT = t.getContext().makeChild({ card: card.id });
-                const data = await TnMStorage.getCardData(cardT);
+                try {
+                    // Получаем данные о карточке из хранилища доски
+                    const data = await TnMStorage.getCardDataFromBoard(t, card.id);
 
-                // Фильтруем записи по дате (используем рабочую дату, если она есть, иначе - фактическую)
-                const filteredHistory = data.history ? data.history.filter(entry => {
-                    const dateToCheck = entry.workDate || entry.date;
-                    return entry.type === 'time' && isDateInRange(dateToCheck, startDate, endDate);
-                }) : [];
+                    if (data) {
+                        // Фильтруем записи по дате (используем рабочую дату, если она есть, иначе - фактическую)
+                        const filteredHistory = data.history ? data.history.filter(entry => {
+                            const dateToCheck = entry.workDate || entry.date;
+                            return entry.type === 'time' && isDateInRange(dateToCheck, startDate, endDate);
+                        }) : [];
 
-                // Если есть записи истории или нужно включать пустые карточки
-                if (filteredHistory.length > 0 || includeEmpty) {
-                    if (filteredHistory.length > 0) {
-                        // Добавляем каждую запись в CSV
-                        filteredHistory.forEach(entry => {
-                            const dateStr = formatDateForDisplay(entry.workDate || entry.date);
-                            const cardName = card.name.replace(/"/g, '""'); // Экранируем кавычки
-                            const userName = (entry.memberName || 'Пользователь').replace(/"/g, '""');
-                            const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
-                            const description = (entry.description || '').replace(/"/g, '""');
+                        // Если есть записи истории или нужно включать пустые карточки
+                        if (filteredHistory.length > 0 || includeEmpty) {
+                            if (filteredHistory.length > 0) {
+                                // Добавляем каждую запись в CSV
+                                filteredHistory.forEach(entry => {
+                                    const dateStr = formatDateForDisplay(entry.workDate || entry.date);
+                                    const cardName = card.name.replace(/"/g, '""'); // Экранируем кавычки
+                                    const userName = (entry.memberName || 'Пользователь').replace(/"/g, '""');
+                                    const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                                    const description = (entry.description || '').replace(/"/g, '""');
 
-                            csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${description}"\n`;
-                        });
-                    } else {
-                        // Добавляем пустую запись для карточки
-                        const cardName = card.name.replace(/"/g, '""');
-                        csvContent += `"","${cardName}","","0m",""\n`;
+                                    csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${description}"\n`;
+                                });
+                            } else if (includeEmpty) {
+                                // Добавляем пустую запись для карточки
+                                const cardName = card.name.replace(/"/g, '""');
+                                csvContent += `"","${cardName}","","0m",""\n`;
+                            }
+                        }
                     }
+                } catch (error) {
+                    console.error(`Ошибка при обработке карточки ${card.id}:`, error);
                 }
 
                 // Обновляем прогресс

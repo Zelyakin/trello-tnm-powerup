@@ -8,12 +8,50 @@ const TnMStorage = {
             hours: 0,
             minutes: 0,
             history: []
+        }).then(function(data) {
+            // После получения данных, синхронизируем их с хранилищем доски
+            t.card('id').then(function(card) {
+                TnMStorage.syncCardDataWithBoard(t, card.id, data);
+            });
+            return data;
         });
     },
 
     // Сохранить данные T&M для карточки
     saveCardData: function(t, data) {
-        return t.set('card', 'shared', 'tnm-data', data);
+        return t.set('card', 'shared', 'tnm-data', data).then(function() {
+            // После сохранения данных, синхронизируем их с хранилищем доски
+            return t.card('id').then(function(card) {
+                return TnMStorage.syncCardDataWithBoard(t, card.id, data);
+            });
+        });
+    },
+
+    // Синхронизировать данные карточки с хранилищем доски
+    syncCardDataWithBoard: function(t, cardId, data) {
+        // Сохраняем данные карточки в специальном ключе на уровне доски
+        return t.set('board', 'shared', `tnm-card-data-${cardId}`, data)
+            .then(function() {
+                // Добавляем ID карточки в список известных карточек
+                return t.get('board', 'shared', 'tnm-known-card-ids', []);
+            })
+            .then(function(knownCardIds) {
+                if (!knownCardIds.includes(cardId)) {
+                    knownCardIds.push(cardId);
+                    return t.set('board', 'shared', 'tnm-known-card-ids', knownCardIds);
+                }
+                return Promise.resolve();
+            });
+    },
+
+    // Получить данные карточки из хранилища доски
+    getCardDataFromBoard: function(t, cardId) {
+        return t.get('board', 'shared', `tnm-card-data-${cardId}`, null);
+    },
+
+    // Получить список ID всех известных карточек с данными
+    getKnownCardIds: function(t) {
+        return t.get('board', 'shared', 'tnm-known-card-ids', []);
     },
 
     // Добавить запись о затраченном времени
@@ -124,11 +162,21 @@ const TnMStorage = {
                     resetPromises.push(
                         t.set('board', 'shared', `tnm-card-reset-${card.id}`, true)
                     );
+
+                    // Также удаляем данные из хранилища доски
+                    resetPromises.push(
+                        t.remove('board', 'shared', `tnm-card-data-${card.id}`)
+                    );
                 });
 
                 // Сохраняем список всех карточек для очистки
                 resetPromises.push(
                     t.set('board', 'shared', 'tnm-cards-to-reset', cards.map(card => card.id))
+                );
+
+                // Очищаем список известных карточек
+                resetPromises.push(
+                    t.set('board', 'shared', 'tnm-known-card-ids', [])
                 );
 
                 // Устанавливаем флаг очистки данных
@@ -250,6 +298,14 @@ const TnMStorage = {
         if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
 
         return result;
+    },
+
+    // Новая функция: получение информации о карточке по ID
+    getCardInfo: function(t, cardId) {
+        return t.cards('all')
+            .then(function(cards) {
+                return cards.find(card => card.id === cardId);
+            });
     }
 };
 
