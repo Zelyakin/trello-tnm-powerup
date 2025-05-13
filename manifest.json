@@ -2,7 +2,7 @@
   "name": "T&M",
   "details": "Учет затраченного времени на карточках Trello",
   "icon": {
-    "url": "./img/icon.svg"
+    "url": "./img/icon.png"
   },
   "author": "Ваше имя",
   "capabilities": [
