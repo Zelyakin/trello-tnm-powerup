@@ -63,7 +63,7 @@ const TnMStorage = {
             });
     },
 
-    // Новая функция: Удаление записи о времени
+    // Удаление записи о времени
     deleteTimeRecord: function(t, recordId) {
         return TnMStorage.getCardData(t)
             .then(function(data) {
@@ -99,6 +99,34 @@ const TnMStorage = {
 
                 // Сохраняем обновленные данные
                 return TnMStorage.saveCardData(t, data);
+            });
+    },
+
+    // Удаление всех данных Power-Up со всех карточек
+    resetAllData: function(t) {
+        // Удаляем настройки доски
+        const resetBoardSettings = t.set('board', 'shared', 'tnm-settings', {
+            hourlyRate: 0,
+            currency: 'RUB'
+        });
+
+        // Получаем все карточки на доске
+        return t.cards('id')
+            .then(function(cards) {
+                // Создаем массив промисов для удаления данных с каждой карточки
+                const resetPromises = cards.map(function(card) {
+                    return t.set('card', 'shared', 'tnm-data', null, card.id);
+                });
+
+                // Добавляем промис для сброса настроек доски
+                resetPromises.push(resetBoardSettings);
+
+                // Ждем выполнения всех промисов
+                return Promise.all(resetPromises);
+            })
+            .then(function() {
+                // Обновляем маркер времени последнего обновления
+                return t.set('board', 'shared', 'tnm-cache-version', Date.now());
             });
     },
 
