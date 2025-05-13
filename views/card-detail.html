@@ -71,6 +71,21 @@
     .cancel-btn:hover {
       background-color: #DFE1E6;
     }
+
+    /* Добавляем стили для помощи по формату ввода */
+    .input-help {
+      font-size: 12px;
+      color: #5E6C84;
+      margin-top: 4px;
+    }
+
+    /* Стиль для ошибки валидации */
+    .error-message {
+      color: #CF513D;
+      font-size: 12px;
+      margin-top: 4px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -83,19 +98,13 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <!-- Форма добавления времени без изменений -->
+    <!-- Форма добавления времени с одним полем -->
     <h3>Добавить время</h3>
     <div class="form-group">
-      <label for="time-days">Дни:</label>
-      <input type="number" id="time-days" min="0" step="1" value="0">
-    </div>
-    <div class="form-group">
-      <label for="time-hours">Часы:</label>
-      <input type="number" id="time-hours" min="0" max="23" step="1" value="0">
-    </div>
-    <div class="form-group">
-      <label for="time-minutes">Минуты:</label>
-      <input type="number" id="time-minutes" min="0" max="59" step="1" value="0">
+      <label for="time-input">Время:</label>
+      <input type="text" id="time-input" placeholder="Пример: 1d 2h 30m">
+      <div class="input-help">Формат: Xd Yh Zm (дни, часы, минуты). Примеры: 2h 30m, 1d 4h, 45m</div>
+      <div class="error-message" id="time-error">Неверный формат. Используйте формат Xd Yh Zm</div>
     </div>
     <div class="form-group">
       <label for="time-description">Описание:</label>
@@ -131,6 +140,41 @@
 <script>
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
+
+  // Функция для парсинга строки времени (новая)
+  function parseTimeString(timeStr) {
+    const result = {
+      days: 0,
+      hours: 0,
+      minutes: 0
+    };
+
+    if (!timeStr.trim()) {
+      return null; // Пустая строка
+    }
+
+    // Регулярное выражение для поиска компонентов времени
+    const daysRegex = /(\d+)\s*d/i;
+    const hoursRegex = /(\d+)\s*h/i;
+    const minutesRegex = /(\d+)\s*m/i;
+
+    // Поиск компонентов в строке
+    const daysMatch = timeStr.match(daysRegex);
+    const hoursMatch = timeStr.match(hoursRegex);
+    const minutesMatch = timeStr.match(minutesRegex);
+
+    // Если не найдено ни одного компонента, возвращаем null
+    if (!daysMatch && !hoursMatch && !minutesMatch) {
+      return null;
+    }
+
+    // Заполняем найденные значения
+    if (daysMatch) result.days = parseInt(daysMatch[1]);
+    if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
+    if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
+
+    return result;
+  }
 
   // Загрузка данных при открытии
   function loadData() {
@@ -227,24 +271,35 @@
     });
   });
 
-  // Сохранение времени (без изменений)
+  // Сохранение времени (изменено для работы с единым полем ввода)
   document.getElementById('save-time').addEventListener('click', function() {
-    const days = parseInt(document.getElementById('time-days').value) || 0;
-    const hours = parseInt(document.getElementById('time-hours').value) || 0;
-    const minutes = parseInt(document.getElementById('time-minutes').value) || 0;
+    const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
+    const timeError = document.getElementById('time-error');
 
-    if (days === 0 && hours === 0 && minutes === 0) {
-      alert('Пожалуйста, укажите время');
+    // Парсим строку времени
+    const time = parseTimeString(timeInput);
+
+    if (!time) {
+      // Показываем ошибку
+      timeError.style.display = 'block';
       return;
     }
 
-    TnMStorage.addTimeRecord(t, days, hours, minutes, description)
+    // Скрываем ошибку, если она была показана
+    timeError.style.display = 'none';
+
+    // Проверяем, что указано хоть какое-то время
+    if (time.days === 0 && time.hours === 0 && time.minutes === 0) {
+      // Показываем ошибку
+      timeError.style.display = 'block';
+      return;
+    }
+
+    TnMStorage.addTimeRecord(t, time.days, time.hours, time.minutes, description)
             .then(function() {
               // Очистка формы
-              document.getElementById('time-days').value = '0';
-              document.getElementById('time-hours').value = '0';
-              document.getElementById('time-minutes').value = '0';
+              document.getElementById('time-input').value = '';
               document.getElementById('time-description').value = '';
 
               // Обновление данных
@@ -271,6 +326,12 @@
       deleteRecord(currentRecordToDelete);
       hideDeleteConfirmation();
     }
+  });
+
+  // Обработчик для поля ввода времени
+  document.getElementById('time-input').addEventListener('input', function() {
+    // Скрываем ошибку при изменении поля
+    document.getElementById('time-error').style.display = 'none';
   });
 
   // Загрузка данных при открытии

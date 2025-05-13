@@ -20,7 +20,7 @@ function migrateData(t, data) {
     return data;
 }
 
-// Добавим функцию форматирования времени непосредственно в этот файл
+// Обновленная функция форматирования времени в едином формате
 function formatTime(days, hours, minutes) {
     days = parseInt(days) || 0;
     hours = parseInt(hours) || 0;

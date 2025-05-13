@@ -187,8 +187,12 @@ const TnMStorage = {
         return t.set('board', 'shared', 'tnm-settings', settings);
     },
 
-    // Форматирование времени для отображения
+    // Форматирование времени для отображения (обновлено)
     formatTime: function(days, hours, minutes) {
+        days = parseInt(days) || 0;
+        hours = parseInt(hours) || 0;
+        minutes = parseInt(minutes) || 0;
+
         let result = [];
 
         // Добавляем компоненты, только если они больше нуля
@@ -201,6 +205,41 @@ const TnMStorage = {
 
         // Объединяем через пробел
         return result.join(' ');
+    },
+
+    // Новая функция: парсинг строки времени
+    parseTimeString: function(timeStr) {
+        const result = {
+            days: 0,
+            hours: 0,
+            minutes: 0
+        };
+
+        if (!timeStr || !timeStr.trim()) {
+            return null; // Пустая строка
+        }
+
+        // Регулярное выражение для поиска компонентов времени
+        const daysRegex = /(\d+)\s*d/i;
+        const hoursRegex = /(\d+)\s*h/i;
+        const minutesRegex = /(\d+)\s*m/i;
+
+        // Поиск компонентов в строке
+        const daysMatch = timeStr.match(daysRegex);
+        const hoursMatch = timeStr.match(hoursRegex);
+        const minutesMatch = timeStr.match(minutesRegex);
+
+        // Если не найдено ни одного компонента, возвращаем null
+        if (!daysMatch && !hoursMatch && !minutesMatch) {
+            return null;
+        }
+
+        // Заполняем найденные значения
+        if (daysMatch) result.days = parseInt(daysMatch[1]);
+        if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
+        if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
+
+        return result;
     }
 };
 
