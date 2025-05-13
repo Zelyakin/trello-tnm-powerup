@@ -7,6 +7,71 @@
   <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
   <link rel="stylesheet" href="../css/style.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    /* Добавляем стили для кнопки удаления */
+    .delete-record {
+      color: #CF513D;
+      cursor: pointer;
+      margin-left: 8px;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background-color: transparent;
+      border: 1px solid #CF513D;
+    }
+
+    .delete-record:hover {
+      background-color: #FEE6E3;
+    }
+
+    .history-item {
+      position: relative;
+    }
+
+    .history-actions {
+      margin-top: 8px;
+      text-align: right;
+    }
+
+    .confirmation-dialog {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .confirmation-content {
+      background-color: white;
+      padding: 16px;
+      border-radius: 3px;
+      max-width: 80%;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .confirmation-buttons {
+      margin-top: 12px;
+      text-align: right;
+    }
+
+    .confirmation-buttons button {
+      margin-left: 8px;
+    }
+
+    .cancel-btn {
+      background-color: #EBECF0;
+      color: #172B4D;
+    }
+
+    .cancel-btn:hover {
+      background-color: #DFE1E6;
+    }
+  </style>
 </head>
 <body>
 <div class="container">
@@ -18,6 +83,7 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
+    <!-- Форма добавления времени без изменений -->
     <h3>Добавить время</h3>
     <div class="form-group">
       <label for="time-days">Дни:</label>
@@ -44,7 +110,19 @@
 
   <div class="tab-content" id="history-tab">
     <div class="history-list" id="history-list">
-      <!-- Здесь будет история записей -->
+      <!-- Здесь будет история записей с кнопками удаления -->
+    </div>
+  </div>
+</div>
+
+<!-- Диалог подтверждения удаления -->
+<div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
+  <div class="confirmation-content">
+    <h3>Подтверждение удаления</h3>
+    <p>Вы уверены, что хотите удалить эту запись времени?</p>
+    <div class="confirmation-buttons">
+      <button class="cancel-btn" id="cancel-delete">Отмена</button>
+      <button class="mod-danger" id="confirm-delete">Удалить</button>
     </div>
   </div>
 </div>
@@ -52,6 +130,7 @@
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
+  let currentRecordToDelete = null;
 
   // Загрузка данных при открытии
   function loadData() {
@@ -72,6 +151,7 @@
                   if (record.type === 'time') {
                     const item = document.createElement('div');
                     item.className = 'history-item';
+                    item.dataset.recordId = record.id;
 
                     const date = new Date(record.date).toLocaleDateString();
                     // Форматируем время для записи в истории
@@ -83,14 +163,56 @@
                       <div class="history-details">
                         <strong>${timeStr}</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
                       </div>
+                      <div class="history-actions">
+                        <button class="delete-record" data-record-id="${record.id}">Удалить</button>
+                      </div>
                     `;
 
                     historyList.appendChild(item);
                   }
                 });
+
+                // Добавляем обработчики для кнопок удаления
+                document.querySelectorAll('.delete-record').forEach(function(button) {
+                  button.addEventListener('click', function() {
+                    const recordId = parseInt(this.dataset.recordId);
+                    showDeleteConfirmation(recordId);
+                  });
+                });
               } else {
                 historyList.innerHTML = '<p>История пуста</p>';
               }
+            });
+  }
+
+  // Функция отображения диалога подтверждения удаления
+  function showDeleteConfirmation(recordId) {
+    currentRecordToDelete = recordId;
+    document.getElementById('confirmation-dialog').style.display = 'flex';
+  }
+
+  // Функция скрытия диалога подтверждения
+  function hideDeleteConfirmation() {
+    document.getElementById('confirmation-dialog').style.display = 'none';
+    currentRecordToDelete = null;
+  }
+
+  // Функция удаления записи
+  function deleteRecord(recordId) {
+    TnMStorage.deleteTimeRecord(t, recordId)
+            .then(function() {
+              // Обновление данных после удаления
+              loadData();
+
+              // Уведомление Trello об обновлении бейджей
+              t.card('id')
+                      .then(function(card) {
+                        return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
+                      });
+            })
+            .catch(function(err) {
+              console.error('Ошибка при удалении записи:', err);
+              alert('Не удалось удалить запись: ' + err.message);
             });
   }
 
@@ -105,7 +227,7 @@
     });
   });
 
-  // Сохранение времени
+  // Сохранение времени (без изменений)
   document.getElementById('save-time').addEventListener('click', function() {
     const days = parseInt(document.getElementById('time-days').value) || 0;
     const hours = parseInt(document.getElementById('time-hours').value) || 0;
@@ -137,6 +259,18 @@
                         t.closePopup();
                       });
             });
+  });
+
+  // Обработчики для диалога подтверждения
+  document.getElementById('cancel-delete').addEventListener('click', function() {
+    hideDeleteConfirmation();
+  });
+
+  document.getElementById('confirm-delete').addEventListener('click', function() {
+    if (currentRecordToDelete) {
+      deleteRecord(currentRecordToDelete);
+      hideDeleteConfirmation();
+    }
   });
 
   // Загрузка данных при открытии

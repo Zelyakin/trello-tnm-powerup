@@ -63,6 +63,45 @@ const TnMStorage = {
             });
     },
 
+    // Новая функция: Удаление записи о времени
+    deleteTimeRecord: function(t, recordId) {
+        return TnMStorage.getCardData(t)
+            .then(function(data) {
+                // Находим запись для удаления
+                const recordIndex = data.history.findIndex(record => record.id === recordId);
+
+                if (recordIndex === -1) {
+                    throw new Error('Запись не найдена');
+                }
+
+                // Получаем запись перед удалением
+                const record = data.history[recordIndex];
+
+                // Вычитаем время из общего времени
+                data.days = Math.max(0, (parseInt(data.days) || 0) - (parseInt(record.days) || 0));
+                data.hours = Math.max(0, (parseInt(data.hours) || 0) - (parseInt(record.hours) || 0));
+                data.minutes = Math.max(0, (parseInt(data.minutes) || 0) - (parseInt(record.minutes) || 0));
+
+                // Нормализуем значения в случае отрицательных минут или часов
+                // (может произойти при удалении записи, если были округления)
+                while (data.minutes < 0) {
+                    data.minutes += 60;
+                    data.hours -= 1;
+                }
+
+                while (data.hours < 0) {
+                    data.hours += 24;
+                    data.days -= 1;
+                }
+
+                // Удаляем запись из истории
+                data.history.splice(recordIndex, 1);
+
+                // Сохраняем обновленные данные
+                return TnMStorage.saveCardData(t, data);
+            });
+    },
+
     // Получить настройки доски
     getBoardSettings: function(t) {
         return t.get('board', 'shared', 'tnm-settings', {

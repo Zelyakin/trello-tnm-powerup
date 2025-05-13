@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
     <link rel="stylesheet" href="../css/style.css">
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <!-- Существующие стили -->
     <style>
         /* Дополнительные стили для обратной стороны карточки */
         .back-section {
@@ -123,6 +124,24 @@
     t.render(function() {
         loadData();
     });
+
+    // Прослушиваем внешние обновления данных (например, после удаления записи)
+    t.get('card', 'shared', 'tnm-lastUpdate', 0)
+        .then(function(lastUpdate) {
+            // Сохраняем текущее значение для последующего сравнения
+            window.lastUpdateTimestamp = lastUpdate;
+
+            // Устанавливаем интервал проверки обновлений
+            setInterval(function() {
+                t.get('card', 'shared', 'tnm-lastUpdate', 0)
+                    .then(function(newLastUpdate) {
+                        if (newLastUpdate !== window.lastUpdateTimestamp) {
+                            window.lastUpdateTimestamp = newLastUpdate;
+                            loadData();
+                        }
+                    });
+            }, 2000); // Проверяем каждые 2 секунды
+        });
 
     // Загрузка данных
     function loadData() {
