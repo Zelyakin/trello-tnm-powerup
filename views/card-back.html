@@ -163,11 +163,14 @@
 
                     // Отображаем каждую запись
                     displayEntries.forEach(function(entry) {
+                        // Используем дату выполнения работы, если она есть
+                        const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date);
+
                         entriesHTML += `
                 <div class="tnm-time-entry">
                   <div class="tnm-time-header">
                     <div>
-                      <span class="tnm-time-date">${formatDate(entry.date)}</span>
+                      <span class="tnm-time-date">${displayDate}</span>
                       <span class="tnm-time-user">${entry.memberName || 'Пользователь'}</span>
                     </div>
                     <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>

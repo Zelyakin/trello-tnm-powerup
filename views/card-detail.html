@@ -83,6 +83,16 @@
       margin-top: 4px;
       display: none;
     }
+
+    /* Новые стили для календаря */
+    .date-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .date-group input[type="date"] {
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -95,7 +105,7 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <!-- Форма добавления времени (переставлены поля) -->
+    <!-- Форма добавления времени с новым полем календаря -->
     <h3>Добавить время</h3>
     <div class="form-group">
       <label for="member-select">Пользователь:</label>
@@ -103,6 +113,10 @@
         <!-- Список пользователей будет заполнен динамически -->
         <option value="loading">Загрузка пользователей...</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label for="work-date">Дата выполнения:</label>
+      <input type="date" id="work-date">
     </div>
     <div class="form-group">
       <label for="time-input">Время:</label>
@@ -181,6 +195,17 @@
     return result;
   }
 
+  // Инициализация поля даты при загрузке страницы
+  function initDateField() {
+    const dateField = document.getElementById('work-date');
+    const today = new Date();
+    // Форматируем дату в формате YYYY-MM-DD для поля input[type="date"]
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    dateField.value = `${year}-${month}-${day}`;
+  }
+
   // Загрузка пользователей доски
   function loadBoardMembers() {
     const memberSelect = document.getElementById('member-select');
@@ -220,7 +245,13 @@
             });
   }
 
-  // Загрузка данных при открытии (без изменений)
+  // Функция форматирования даты
+  function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  }
+
+  // Загрузка данных при открытии
   function loadData() {
     TnMStorage.getCardData(t)
             .then(function(data) {
@@ -241,12 +272,14 @@
                     item.className = 'history-item';
                     item.dataset.recordId = record.id;
 
-                    const date = new Date(record.date).toLocaleDateString();
+                    // Используем workDate, если она есть, иначе используем date
+                    const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date);
+
                     // Форматируем время для записи в истории
                     const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
 
                     item.innerHTML = `
-                      <div class="history-date">${date}</div>
+                      <div class="history-date">${displayDate}</div>
                       <div class="history-type">Время</div>
                       <div class="history-details">
                         <strong>${timeStr}</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
@@ -313,16 +346,32 @@
     });
   });
 
-  // Сохранение времени (изменено для использования выбранного пользователя)
+  // Сохранение времени (изменено для использования выбранного пользователя и даты)
   document.getElementById('save-time').addEventListener('click', function() {
     const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
     const timeError = document.getElementById('time-error');
     const memberSelect = document.getElementById('member-select');
+    const workDateInput = document.getElementById('work-date').value;
 
     // Проверяем, что выбран пользователь
     if (memberSelect.value === 'loading' || memberSelect.value === 'error') {
       alert('Пожалуйста, дождитесь загрузки пользователей или перезагрузите страницу');
+      return;
+    }
+
+    // Проверяем, что указана дата
+    if (!workDateInput) {
+      alert('Пожалуйста, укажите дату выполнения работы');
+      return;
+    }
+
+    // Преобразуем строку даты в объект Date и затем в ISO строку
+    const workDate = new Date(workDateInput);
+
+    // Проверяем корректность даты
+    if (isNaN(workDate.getTime())) {
+      alert('Пожалуйста, укажите корректную дату');
       return;
     }
 
@@ -351,7 +400,7 @@
     // Получаем данные карточки
     TnMStorage.getCardData(t)
             .then(function(data) {
-              // Создаем новую запись с информацией о выбранном пользователе
+              // Создаем новую запись с информацией о выбранном пользователе и дате
               const newRecord = {
                 id: Date.now(),
                 type: 'time',
@@ -359,7 +408,8 @@
                 hours: parseInt(time.hours) || 0,
                 minutes: parseInt(time.minutes) || 0,
                 description: description,
-                date: new Date().toISOString(),
+                date: new Date().toISOString(), // Фактическая дата добавления
+                workDate: workDate.toISOString(), // Дата выполнения работы
                 memberId: selectedMember.id,
                 memberName: selectedMember.name
               };
@@ -391,6 +441,7 @@
               // Очистка формы
               document.getElementById('time-input').value = '';
               document.getElementById('time-description').value = '';
+              // Поле даты оставляем с текущей датой
 
               // Обновление данных
               loadData();
@@ -426,6 +477,7 @@
 
   // Загрузка данных при открытии
   document.addEventListener('DOMContentLoaded', function() {
+    initDateField(); // Инициализируем поле даты
     loadData();
     loadBoardMembers();
   });
