@@ -121,7 +121,7 @@ TrelloPowerUp.initialize({
     'card-back-section': function(t, options) {
         return {
             title: 'Учет времени',
-            icon: './img/icon.svg',
+            icon: t.signUrl('./img/icon.svg'),
             content: {
                 type: 'iframe',
                 url: t.signUrl('./views/card-back.html'),
@@ -131,22 +131,24 @@ TrelloPowerUp.initialize({
     },
 
     'board-buttons': function(t, options) {
-        return [
-            {
-                icon: {
-                    dark: './img/export-white.svg',
-                    light: './img/export-dark.svg'
-                },
-                text: 'Экспорт T&M',
-                callback: function(t) {
-                    return t.popup({
-                        title: 'Экспорт данных о времени',
-                        url: `./views/export-time.html?v=${Date.now()}`,
-                        height: 400
-                    });
-                }
-            }
-        ];
+        // Заранее создаем подписанные URLs для иконок
+        return t.getContext()
+            .then(function() {
+                return [{
+                    icon: {
+                        dark: t.signUrl('./img/export-white.svg'),
+                        light: t.signUrl('./img/export-dark.svg')
+                    },
+                    text: 'Экспорт T&M',
+                    callback: function(t) {
+                        return t.popup({
+                            title: 'Экспорт данных о времени',
+                            url: `./views/export-time.html?v=${Date.now()}`,
+                            height: 400
+                        });
+                    }
+                }];
+            });
     },
 
     'show-settings': function(t, options) {
