@@ -135,7 +135,7 @@ TrelloPowerUp.initialize({
             {
                 icon: {
                     dark: './img/icon-white.svg',
-                    light: './img/icon.png'
+                    light: './img/export.svg'
                 },
                 text: 'Экспорт T&M',
                 callback: function(t) {
