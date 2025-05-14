@@ -1,3 +1,4 @@
+<!-- views/settings.html (изменение существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,53 +7,240 @@
   <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
   <link rel="stylesheet" href="../css/style.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    body {
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    }
+
+    h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+
+    p {
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .button-container {
+      margin-bottom: 12px;
+    }
+
+    button {
+      padding: 8px 12px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+      border: none;
+      color: white;
+      margin-bottom: 16px;
+      width: 100%;
+    }
+
+    .mod-primary {
+      background-color: #0079BF;
+    }
+
+    .mod-primary:hover {
+      background-color: #026AA7;
+    }
+
+    .mod-danger {
+      background-color: #CF513D;
+    }
+
+    .mod-danger:hover {
+      background-color: #B04632;
+    }
+
+    #status-message {
+      margin-top: 16px;
+      color: #0079BF;
+      display: none;
+      text-align: center;
+    }
+
+    #error-message {
+      margin-top: 16px;
+      color: #CF513D;
+      display: none;
+      text-align: center;
+    }
+
+    .section-separator {
+      margin: 24px 0;
+      border-top: 1px solid #DFE1E6;
+      position: relative;
+    }
+
+    .warning-text {
+      color: #CF513D;
+      font-weight: bold;
+      font-size: 12px;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* Стили для диалога подтверждения */
+    .confirmation-dialog {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .confirmation-content {
+      background-color: white;
+      padding: 16px;
+      border-radius: 3px;
+      max-width: 80%;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .confirmation-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+
+    .confirmation-text {
+      margin-bottom: 16px;
+    }
+
+    .confirmation-buttons {
+      margin-top: 16px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .confirmation-buttons button {
+      margin-left: 8px;
+      width: auto;
+      margin-bottom: 0;
+    }
+
+    .cancel-btn {
+      background-color: #EBECF0;
+      color: #172B4D !important;
+    }
+
+    .cancel-btn:hover {
+      background-color: #DFE1E6;
+    }
+  </style>
 </head>
 <body>
-<div class="container">
-  <h2>Настройки T&M</h2>
+<div>
+  <h2>Настройки T&M Power-Up</h2>
 
-  <div class="form-group">
-    <label for="hourly-rate">Почасовая ставка:</label>
-    <input type="number" id="hourly-rate" min="0" step="0.01" placeholder="0.00">
+  <p>Управление кешем и данными Power-Up:</p>
+
+  <div class="button-container">
+    <button id="clear-cache-btn" class="mod-primary">Очистить кеш и перезагрузить</button>
   </div>
 
-  <div class="form-group">
-    <label for="currency">Валюта:</label>
-    <select id="currency">
-      <option value="RUB">RUB - Российский рубль</option>
-      <option value="USD">USD - Доллар США</option>
-      <option value="EUR">EUR - Евро</option>
-    </select>
-  </div>
+  <div class="section-separator"></div>
 
-  <button class="mod-primary" id="save-settings">Сохранить настройки</button>
+  <h2>Полный сброс данных</h2>
+  <p>Удаление всех данных о затраченном времени со всех карточек на доске:</p>
+  <div class="button-container">
+    <button id="reset-all-data-btn" class="mod-danger">Удалить все данные</button>
+  </div>
+  <p class="warning-text">ВНИМАНИЕ! Это действие необратимо и удалит все данные о затраченном времени со всех карточек доски.</p>
+
+  <p id="status-message">Кеш очищен. Перезагрузка...</p>
+  <p id="error-message"></p>
+</div>
+
+<!-- Диалог подтверждения полного сброса -->
+<div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
+  <div class="confirmation-content">
+    <div class="confirmation-title">Обновление T&M Power-Up</div>
+    <p class="confirmation-text">Вы уверены, что хотите удалить ВСЕ данные о затраченном времени со ВСЕХ карточек на доске?</p>
+    <p class="confirmation-text">Это действие невозможно отменить!</p>
+    <div class="confirmation-buttons">
+      <button class="cancel-btn" id="cancel-reset">Отмена</button>
+      <button class="mod-danger" id="confirm-reset">Удалить</button>
+    </div>
+  </div>
 </div>
 
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
 
-  // Загрузка настроек
-  t.render(function() {
-    TnMStorage.getBoardSettings(t)
-            .then(function(settings) {
-              document.getElementById('hourly-rate').value = settings.hourlyRate || '';
-              document.getElementById('currency').value = settings.currency || 'RUB';
+  // Обработчик для кнопки очистки кеша
+  document.getElementById('clear-cache-btn').addEventListener('click', function() {
+    // Очищаем локальный временный кеш
+    localStorage.clear();
+
+    // Показываем сообщение о статусе
+    document.getElementById('status-message').style.display = 'block';
+    document.getElementById('status-message').textContent = 'Кеш очищен. Перезагрузка...';
+
+    // Обновляем маркер времени последнего обновления
+    t.set('board', 'shared', 'tnm-cache-version', Date.now())
+            .then(function() {
+              // Закрываем окно и перезагружаем страницу через 2 секунды
+              setTimeout(function() {
+                t.closePopup();
+                window.location.reload(true);
+              }, 2000);
             });
   });
 
-  // Сохранение настроек
-  document.getElementById('save-settings').addEventListener('click', function() {
-    const hourlyRate = parseFloat(document.getElementById('hourly-rate').value) || 0;
-    const currency = document.getElementById('currency').value;
+  // Обработчик для кнопки сброса всех данных
+  document.getElementById('reset-all-data-btn').addEventListener('click', function() {
+    // Показываем диалог подтверждения
+    document.getElementById('confirmation-dialog').style.display = 'flex';
+  });
 
-    TnMStorage.saveBoardSettings(t, {
-      hourlyRate: hourlyRate,
-      currency: currency
-    })
+  // Обработчик для кнопки отмены в диалоге подтверждения
+  document.getElementById('cancel-reset').addEventListener('click', function() {
+    document.getElementById('confirmation-dialog').style.display = 'none';
+  });
+
+  // Обработчик для кнопки подтверждения в диалоге подтверждения
+  document.getElementById('confirm-reset').addEventListener('click', function() {
+    // Скрываем диалог подтверждения
+    document.getElementById('confirmation-dialog').style.display = 'none';
+
+    // Показываем сообщение о статусе
+    document.getElementById('status-message').style.display = 'block';
+    document.getElementById('status-message').textContent = 'Удаление данных...';
+
+    // Удаляем все данные
+    TnMStorage.resetAllData(t)
             .then(function() {
-              t.closePopup();
+              document.getElementById('status-message').textContent = 'Все данные успешно удалены. Перезагрузка...';
+
+              // Закрываем окно и перезагружаем страницу через 2 секунды
+              setTimeout(function() {
+                t.closePopup();
+                window.location.reload(true);
+              }, 2000);
+            })
+            .catch(function(error) {
+              console.error('Ошибка при удалении данных:', error);
+              document.getElementById('status-message').style.display = 'none';
+
+              // Показываем сообщение об ошибке
+              document.getElementById('error-message').style.display = 'block';
+              document.getElementById('error-message').textContent = 'Ошибка при удалении данных: ' + error.message;
             });
+  });
+
+  // Скрываем сообщения при загрузке
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('status-message').style.display = 'none';
+    document.getElementById('error-message').style.display = 'none';
   });
 </script>
 </body>
