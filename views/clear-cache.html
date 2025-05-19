@@ -1,9 +1,8 @@
-<!-- views/clear-cache.html (модификация существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Очистка кеша T&M</title>
+  <title>T&M Cache Clearing</title>
   <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
   <style>
@@ -89,7 +88,7 @@
       margin-top: 8px;
     }
 
-    /* Стили для диалога подтверждения */
+    /* Styles for confirmation dialog */
     .confirmation-dialog {
       position: fixed;
       top: 0;
@@ -143,35 +142,35 @@
 </head>
 <body>
 <div>
-  <h2>Очистка кеша Power-Up</h2>
-  <p>Нажмите кнопку ниже для очистки кеша и перезагрузки Power-Up:</p>
+  <h2>Clear Power-Up Cache</h2>
+  <p>Click the button below to clear cache and reload the Power-Up:</p>
   <div class="button-container">
-    <button id="clear-cache-btn" class="mod-primary">Очистить кеш и перезагрузить</button>
+    <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
   </div>
-  <p id="status-message">Кеш очищен. Перезагрузка...</p>
+  <p id="status-message">Cache cleared. Reloading...</p>
   <p id="error-message"></p>
 
   <div class="button-separator">
-    <span class="button-separator-text">ИЛИ</span>
+    <span class="button-separator-text">OR</span>
   </div>
 
-  <h2>Полный сброс данных</h2>
-  <p>Удаление всех данных о затраченном времени со всех карточек на доске:</p>
+  <h2>Complete Data Reset</h2>
+  <p>Delete all time tracking data from all cards on the board:</p>
   <div class="button-container">
-    <button id="reset-all-data-btn" class="mod-danger">Удалить все данные</button>
+    <button id="reset-all-data-btn" class="mod-danger">Delete All Data</button>
   </div>
-  <p class="warning-text">ВНИМАНИЕ! Это действие необратимо и удалит все данные о затраченном времени со всех карточек доски.</p>
+  <p class="warning-text">WARNING! This action is irreversible and will delete all time tracking data from all cards on the board.</p>
 </div>
 
-<!-- Диалог подтверждения полного сброса -->
+<!-- Confirmation dialog for complete reset -->
 <div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
   <div class="confirmation-content">
-    <div class="confirmation-title">Обновление T&M Power-Up</div>
-    <p class="confirmation-text">Вы уверены, что хотите удалить ВСЕ данные о затраченном времени со ВСЕХ карточек на доске?</p>
-    <p class="confirmation-text">Это действие невозможно отменить!</p>
+    <div class="confirmation-title">T&M Power-Up Update</div>
+    <p class="confirmation-text">Are you sure you want to delete ALL time tracking data from ALL cards on the board?</p>
+    <p class="confirmation-text">This action cannot be undone!</p>
     <div class="confirmation-buttons">
-      <button class="cancel-btn" id="cancel-reset">Отмена</button>
-      <button class="mod-danger" id="confirm-reset">Удалить</button>
+      <button class="cancel-btn" id="cancel-reset">Cancel</button>
+      <button class="mod-danger" id="confirm-reset">Delete</button>
     </div>
   </div>
 </div>
@@ -180,18 +179,18 @@
 <script>
   const t = TrelloPowerUp.iframe();
 
-  // Обработчик для кнопки очистки кеша
+  // Handler for cache clearing button
   document.getElementById('clear-cache-btn').addEventListener('click', function() {
-    // Очищаем локальный временный кеш
+    // Clear local temporary cache
     localStorage.clear();
 
-    // Показываем сообщение о статусе
+    // Show status message
     document.getElementById('status-message').style.display = 'block';
 
-    // Обновляем маркер времени последнего обновления
+    // Update last update timestamp
     t.set('board', 'shared', 'tnm-cache-version', Date.now())
             .then(function() {
-              // Закрываем окно и перезагружаем страницу через 2 секунды
+              // Close window and reload page after 2 seconds
               setTimeout(function() {
                 t.closePopup();
                 window.location.reload(true);
@@ -199,44 +198,44 @@
             });
   });
 
-  // Обработчик для кнопки сброса всех данных
+  // Handler for reset all data button
   document.getElementById('reset-all-data-btn').addEventListener('click', function() {
-    // Показываем диалог подтверждения
+    // Show confirmation dialog
     document.getElementById('confirmation-dialog').style.display = 'flex';
   });
 
-  // Обработчик для кнопки отмены в диалоге подтверждения
+  // Handler for cancel button in confirmation dialog
   document.getElementById('cancel-reset').addEventListener('click', function() {
     document.getElementById('confirmation-dialog').style.display = 'none';
   });
 
-  // Обработчик для кнопки подтверждения в диалоге подтверждения
+  // Handler for confirm button in confirmation dialog
   document.getElementById('confirm-reset').addEventListener('click', function() {
-    // Скрываем диалог подтверждения
+    // Hide confirmation dialog
     document.getElementById('confirmation-dialog').style.display = 'none';
 
-    // Показываем сообщение о статусе
+    // Show status message
     document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').textContent = 'Удаление данных...';
+    document.getElementById('status-message').textContent = 'Deleting data...';
 
-    // Удаляем все данные
+    // Delete all data
     TnMStorage.resetAllData(t)
             .then(function() {
-              document.getElementById('status-message').textContent = 'Все данные успешно удалены. Перезагрузка...';
+              document.getElementById('status-message').textContent = 'All data successfully deleted. Reloading...';
 
-              // Закрываем окно и перезагружаем страницу через 2 секунды
+              // Close window and reload page after 2 seconds
               setTimeout(function() {
                 t.closePopup();
                 window.location.reload(true);
               }, 2000);
             })
             .catch(function(error) {
-              console.error('Ошибка при удалении данных:', error);
+              console.error('Error deleting data:', error);
               document.getElementById('status-message').style.display = 'none';
 
-              // Показываем сообщение об ошибке
+              // Show error message
               document.getElementById('error-message').style.display = 'block';
-              document.getElementById('error-message').textContent = 'Ошибка при удалении данных: ' + error.message;
+              document.getElementById('error-message').textContent = 'Error deleting data: ' + error.message;
             });
   });
 </script>

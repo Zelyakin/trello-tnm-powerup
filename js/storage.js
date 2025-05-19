@@ -1,7 +1,7 @@
-/* Утилиты для работы с хранилищем Trello */
+/* Utilities for working with Trello storage */
 
 const TnMStorage = {
-    // Получить данные T&M для карточки
+    // Get T&M data for card
     getCardData: function(t) {
         return t.get('card', 'shared', 'tnm-data', {
             days: 0,
@@ -9,7 +9,7 @@ const TnMStorage = {
             minutes: 0,
             history: []
         }).then(function(data) {
-            // После получения данных, синхронизируем их с хранилищем доски
+            // After getting data, sync it with board storage
             t.card('id').then(function(card) {
                 TnMStorage.syncCardDataWithBoard(t, card.id, data);
             });
@@ -17,22 +17,22 @@ const TnMStorage = {
         });
     },
 
-    // Сохранить данные T&M для карточки
+    // Save T&M data for card
     saveCardData: function(t, data) {
         return t.set('card', 'shared', 'tnm-data', data).then(function() {
-            // После сохранения данных, синхронизируем их с хранилищем доски
+            // After saving data, sync it with board storage
             return t.card('id').then(function(card) {
                 return TnMStorage.syncCardDataWithBoard(t, card.id, data);
             });
         });
     },
 
-    // Синхронизировать данные карточки с хранилищем доски
+    // Sync card data with board storage
     syncCardDataWithBoard: function(t, cardId, data) {
-        // Сохраняем данные карточки в специальном ключе на уровне доски
+        // Save card data in special key at board level
         return t.set('board', 'shared', `tnm-card-data-${cardId}`, data)
             .then(function() {
-                // Добавляем ID карточки в список известных карточек
+                // Add card ID to list of known cards
                 return t.get('board', 'shared', 'tnm-known-card-ids', []);
             })
             .then(function(knownCardIds) {
@@ -44,24 +44,24 @@ const TnMStorage = {
             });
     },
 
-    // Получить данные карточки из хранилища доски
+    // Get card data from board storage
     getCardDataFromBoard: function(t, cardId) {
         return t.get('board', 'shared', `tnm-card-data-${cardId}`, null);
     },
 
-    // Получить список ID всех известных карточек с данными
+    // Get list of IDs of all known cards with data
     getKnownCardIds: function(t) {
         return t.get('board', 'shared', 'tnm-known-card-ids', []);
     },
 
-    // Добавить запись о затраченном времени
+    // Add time record
     addTimeRecord: function(t, days, hours, minutes, description, workDate) {
-        // Получаем информацию о текущем пользователе
+        // Get info about current user
         return t.member('id', 'fullName', 'username')
             .then(function(member) {
                 return TnMStorage.getCardData(t)
                     .then(function(data) {
-                        // Создаем новую запись с информацией о пользователе
+                        // Create new record with user info
                         const newRecord = {
                             id: Date.now(),
                             type: 'time',
@@ -69,18 +69,18 @@ const TnMStorage = {
                             hours: parseInt(hours) || 0,
                             minutes: parseInt(minutes) || 0,
                             description: description,
-                            date: new Date().toISOString(), // Фактическая дата добавления
-                            workDate: workDate ? new Date(workDate).toISOString() : null, // Дата выполнения работы
+                            date: new Date().toISOString(), // Actual add date
+                            workDate: workDate ? new Date(workDate).toISOString() : null, // Work date
                             memberId: member.id,
                             memberName: member.fullName || member.username
                         };
 
-                        // Обновляем общее время
+                        // Update total time
                         data.days = (parseInt(data.days) || 0) + parseInt(days || 0);
                         data.hours = (parseInt(data.hours) || 0) + parseInt(hours || 0);
                         data.minutes = (parseInt(data.minutes) || 0) + parseInt(minutes || 0);
 
-                        // Нормализуем значения (60 минут = 1 час, 8 часов = 1 день)
+                        // Normalize values (60 minutes = 1 hour, 8 hours = 1 day)
                         while (data.minutes >= 60) {
                             data.minutes -= 60;
                             data.hours += 1;
@@ -91,37 +91,37 @@ const TnMStorage = {
                             data.days += 1;
                         }
 
-                        // Добавляем запись в историю
+                        // Add record to history
                         if (!data.history) data.history = [];
                         data.history.push(newRecord);
 
-                        // Сохраняем обновленные данные
+                        // Save updated data
                         return TnMStorage.saveCardData(t, data);
                     });
             });
     },
 
-    // Удаление записи о времени
+    // Delete time record
     deleteTimeRecord: function(t, recordId) {
         return TnMStorage.getCardData(t)
             .then(function(data) {
-                // Находим запись для удаления
+                // Find record to delete
                 const recordIndex = data.history.findIndex(record => record.id === recordId);
 
                 if (recordIndex === -1) {
-                    throw new Error('Запись не найдена');
+                    throw new Error('Record not found');
                 }
 
-                // Получаем запись перед удалением
+                // Get record before deletion
                 const record = data.history[recordIndex];
 
-                // Вычитаем время из общего времени
+                // Subtract time from total time
                 data.days = Math.max(0, (parseInt(data.days) || 0) - (parseInt(record.days) || 0));
                 data.hours = Math.max(0, (parseInt(data.hours) || 0) - (parseInt(record.hours) || 0));
                 data.minutes = Math.max(0, (parseInt(data.minutes) || 0) - (parseInt(record.minutes) || 0));
 
-                // Нормализуем значения в случае отрицательных минут или часов
-                // (может произойти при удалении записи, если были округления)
+                // Normalize values in case of negative minutes or hours
+                // (can happen when deleting a record if there were rounding)
                 while (data.minutes < 0) {
                     data.minutes += 60;
                     data.hours -= 1;
@@ -132,71 +132,71 @@ const TnMStorage = {
                     data.days -= 1;
                 }
 
-                // Удаляем запись из истории
+                // Remove record from history
                 data.history.splice(recordIndex, 1);
 
-                // Сохраняем обновленные данные
+                // Save updated data
                 return TnMStorage.saveCardData(t, data);
             });
     },
 
-    // Удаление всех данных Power-Up со всех карточек
+    // Delete all Power-Up data from all cards
     resetAllData: function(t) {
-        // Удаляем настройки доски
+        // Delete board settings
         const resetBoardSettings = t.set('board', 'shared', 'tnm-settings', {
             hourlyRate: 0,
-            currency: 'RUB'
+            currency: 'USD'
         });
 
-        // Получаем все карточки на доске
+        // Get all cards on the board
         return t.cards('all')
             .then(function(cards) {
-                // Создаем массив промисов для удаления данных с каждой карточки
+                // Create array of promises to delete data from each card
                 const resetPromises = [];
 
-                // Для Trello API нам нужно использовать метод t.remove для очистки данных карточек
+                // For Trello API we need to use t.remove method to clear card data
                 cards.forEach(function(card) {
-                    // Мы не можем напрямую удалить данные с карточки указав только её ID
-                    // Вместо этого мы запомним все ID карточек, и пометим их для удаления
-                    // при следующем открытии
+                    // We can't directly delete data from a card by specifying only its ID
+                    // Instead we'll remember all card IDs and mark them for deletion
+                    // the next time they're opened
                     resetPromises.push(
                         t.set('board', 'shared', `tnm-card-reset-${card.id}`, true)
                     );
 
-                    // Также удаляем данные из хранилища доски
+                    // Also delete data from board storage
                     resetPromises.push(
                         t.remove('board', 'shared', `tnm-card-data-${card.id}`)
                     );
                 });
 
-                // Сохраняем список всех карточек для очистки
+                // Save list of all cards for cleaning
                 resetPromises.push(
                     t.set('board', 'shared', 'tnm-cards-to-reset', cards.map(card => card.id))
                 );
 
-                // Очищаем список известных карточек
+                // Clear list of known cards
                 resetPromises.push(
                     t.set('board', 'shared', 'tnm-known-card-ids', [])
                 );
 
-                // Устанавливаем флаг очистки данных
+                // Set data reset flag
                 resetPromises.push(
                     t.set('board', 'shared', 'tnm-data-reset-requested', true)
                 );
 
-                // Добавляем промис для сброса настроек доски
+                // Add promise for resetting board settings
                 resetPromises.push(resetBoardSettings);
 
-                // Ждем выполнения всех промисов
+                // Wait for all promises to complete
                 return Promise.all(resetPromises);
             })
             .then(function() {
-                // Обновляем маркер времени последнего обновления
+                // Update last update timestamp
                 return t.set('board', 'shared', 'tnm-cache-version', Date.now());
             });
     },
 
-    // Новая функция: проверка и очистка данных для карточки при открытии
+    // New function: check and clear card data on opening
     checkAndClearCardData: function(t) {
         return Promise.all([
             t.card('id'),
@@ -204,14 +204,14 @@ const TnMStorage = {
         ])
             .then(function([card, resetRequested]) {
                 if (resetRequested) {
-                    // Проверяем, нужно ли очистить данные для этой карточки
+                    // Check if data needs to be cleared for this card
                     return t.get('board', 'shared', `tnm-card-reset-${card.id}`, false)
                         .then(function(needsReset) {
                             if (needsReset) {
-                                // Очищаем данные карточки
+                                // Clear card data
                                 return t.set('card', 'shared', 'tnm-data', null)
                                     .then(function() {
-                                        // Удаляем флаг сброса для этой карточки
+                                        // Remove reset flag for this card
                                         return t.remove('board', 'shared', `tnm-card-reset-${card.id}`);
                                     });
                             }
@@ -222,20 +222,20 @@ const TnMStorage = {
             });
     },
 
-    // Получить настройки доски
+    // Get board settings
     getBoardSettings: function(t) {
         return t.get('board', 'shared', 'tnm-settings', {
             hourlyRate: 0,
-            currency: 'RUB'
+            currency: 'USD'
         });
     },
 
-    // Сохранить настройки доски
+    // Save board settings
     saveBoardSettings: function(t, settings) {
         return t.set('board', 'shared', 'tnm-settings', settings);
     },
 
-    // Форматирование времени для отображения (обновлено)
+    // Time formatting for display (updated)
     formatTime: function(days, hours, minutes) {
         days = parseInt(days) || 0;
         hours = parseInt(hours) || 0;
@@ -243,19 +243,19 @@ const TnMStorage = {
 
         let result = [];
 
-        // Добавляем компоненты, только если они больше нуля
+        // Add components only if they are greater than zero
         if (days > 0) result.push(days + 'd');
         if (hours > 0) result.push(hours + 'h');
         if (minutes > 0) result.push(minutes + 'm');
 
-        // Если все компоненты равны нулю, показываем хотя бы минуты
+        // If all components are zero, show at least minutes
         if (result.length === 0) return '0m';
 
-        // Объединяем через пробел
+        // Join with space
         return result.join(' ');
     },
 
-    // Форматирование даты для отображения
+    // Date formatting for display
     formatDate: function(dateString) {
         if (!dateString) return '';
 
@@ -265,7 +265,7 @@ const TnMStorage = {
         return date.toLocaleDateString();
     },
 
-    // Новая функция: парсинг строки времени
+    // New function: parse time string
     parseTimeString: function(timeStr) {
         const result = {
             days: 0,
@@ -274,25 +274,25 @@ const TnMStorage = {
         };
 
         if (!timeStr || !timeStr.trim()) {
-            return null; // Пустая строка
+            return null; // Empty string
         }
 
-        // Регулярное выражение для поиска компонентов времени
+        // Regular expression to find time components
         const daysRegex = /(\d+)\s*d/i;
         const hoursRegex = /(\d+)\s*h/i;
         const minutesRegex = /(\d+)\s*m/i;
 
-        // Поиск компонентов в строке
+        // Find components in string
         const daysMatch = timeStr.match(daysRegex);
         const hoursMatch = timeStr.match(hoursRegex);
         const minutesMatch = timeStr.match(minutesRegex);
 
-        // Если не найдено ни одного компонента, возвращаем null
+        // If no components found, return null
         if (!daysMatch && !hoursMatch && !minutesMatch) {
             return null;
         }
 
-        // Заполняем найденные значения
+        // Fill found values
         if (daysMatch) result.days = parseInt(daysMatch[1]);
         if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
         if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
@@ -300,7 +300,7 @@ const TnMStorage = {
         return result;
     },
 
-    // Новая функция: получение информации о карточке по ID
+    // New function: get card info by ID
     getCardInfo: function(t, cardId) {
         return t.cards('all')
             .then(function(cards) {
@@ -308,12 +308,12 @@ const TnMStorage = {
             });
     },
 
-    // Преобразовать время в минуты (удобно для расчетов)
+    // Convert time to minutes (convenient for calculations)
     timeToMinutes: function(days, hours, minutes) {
         return (days * 8 * 60) + (hours * 60) + minutes;
     },
 
-    // Преобразовать минуты обратно в структуру времени
+    // Convert minutes back to time structure
     minutesToTime: function(totalMinutes) {
         const days = Math.floor(totalMinutes / (8 * 60));
         totalMinutes -= days * 8 * 60;

@@ -1,15 +1,14 @@
-<!-- views/card-back.html (модификация существующего файла) -->
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>T&M Информация</title>
+    <title>T&M Information</title>
     <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
     <link rel="stylesheet" href="../css/style.css">
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
-    <!-- Существующие стили -->
+    <!-- Existing styles -->
     <style>
-        /* Дополнительные стили для обратной стороны карточки */
+        /* Additional styles for card back */
         .back-section {
             padding: 8px;
         }
@@ -85,13 +84,13 @@
 </head>
 <body>
 <div class="back-section">
-    <div class="tnm-time-title">Затраченное время:</div>
+    <div class="tnm-time-title">Time spent:</div>
     <div id="time-entries-list">
-        <div class="tnm-empty-state">Загрузка данных...</div>
+        <div class="tnm-empty-state">Loading data...</div>
     </div>
 
     <div class="tnm-footer">
-        <a href="#" id="open-details">Открыть полную информацию</a>
+        <a href="#" id="open-details">View full information</a>
     </div>
 </div>
 
@@ -99,17 +98,17 @@
 <script>
     const t = TrelloPowerUp.iframe();
 
-    // Функция форматирования даты
+    // Date formatting function
     function formatDate(dateString) {
         const date = new Date(dateString);
         return date.toLocaleDateString();
     }
 
-    // Загрузка данных при открытии
+    // Load data on opening
     document.addEventListener('DOMContentLoaded', function() {
         loadData();
 
-        // Обработчик для открытия детальной информации
+        // Handler for opening detailed information
         document.getElementById('open-details').addEventListener('click', function(e) {
             e.preventDefault();
             t.navigate({
@@ -120,18 +119,18 @@
         });
     });
 
-    // Обработка изменений данных
+    // Handle data changes
     t.render(function() {
         loadData();
     });
 
-    // Прослушиваем внешние обновления данных (например, после удаления записи)
+    // Listen for external data updates (e.g. after deleting a record)
     t.get('card', 'shared', 'tnm-lastUpdate', 0)
         .then(function(lastUpdate) {
-            // Сохраняем текущее значение для последующего сравнения
+            // Save current value for later comparison
             window.lastUpdateTimestamp = lastUpdate;
 
-            // Устанавливаем интервал проверки обновлений
+            // Set interval to check for updates
             setInterval(function() {
                 t.get('card', 'shared', 'tnm-lastUpdate', 0)
                     .then(function(newLastUpdate) {
@@ -140,30 +139,30 @@
                             loadData();
                         }
                     });
-            }, 2000); // Проверяем каждые 2 секунды
+            }, 2000); // Check every 2 seconds
         });
 
-    // Загрузка данных
+    // Load data
     function loadData() {
         TnMStorage.getCardData(t)
             .then(function(data) {
                 const timeEntriesList = document.getElementById('time-entries-list');
 
-                // Фильтруем только записи о времени
+                // Filter only time entries
                 const timeEntries = data.history ? data.history.filter(entry => entry.type === 'time') : [];
 
                 if (timeEntries.length > 0) {
-                    // Сортируем по дате (от новых к старым)
+                    // Sort by date (newest to oldest)
                     timeEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                     let entriesHTML = '';
 
-                    // Ограничиваем количество записей до 5 для компактности
+                    // Limit number of entries to 5 for compactness
                     const displayEntries = timeEntries.slice(0, 5);
 
-                    // Отображаем каждую запись
+                    // Display each entry
                     displayEntries.forEach(function(entry) {
-                        // Используем дату выполнения работы, если она есть
+                        // Use work date if available
                         const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date);
 
                         entriesHTML += `
@@ -171,7 +170,7 @@
                   <div class="tnm-time-header">
                     <div>
                       <span class="tnm-time-date">${displayDate}</span>
-                      <span class="tnm-time-user">${entry.memberName || 'Пользователь'}</span>
+                      <span class="tnm-time-user">${entry.memberName || 'User'}</span>
                     </div>
                     <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
                   </div>
@@ -180,50 +179,41 @@
               `;
                     });
 
-                    // Добавляем информацию о скрытых записях, если они есть
+                    // Add information about hidden entries, if any
                     if (timeEntries.length > 5) {
                         entriesHTML += `
                 <div class="tnm-empty-state">
-                  ...и еще ${timeEntries.length - 5} ${getNounPluralForm(timeEntries.length - 5, 'запись', 'записи', 'записей')}
+                  ...and ${timeEntries.length - 5} more ${getNounPluralForm(timeEntries.length - 5, 'entry', 'entries', 'entries')}
                 </div>
               `;
                     }
 
-                    // Добавляем итоговую строку
+                    // Add total row
                     entriesHTML += `
               <div class="tnm-time-total">
-                <div>ИТОГО:</div>
+                <div>TOTAL:</div>
                 <div>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</div>
               </div>
             `;
 
                     timeEntriesList.innerHTML = entriesHTML;
                 } else {
-                    timeEntriesList.innerHTML = '<div class="tnm-empty-state">Записи о затраченном времени отсутствуют</div>';
+                    timeEntriesList.innerHTML = '<div class="tnm-empty-state">No time tracking records</div>';
                 }
             })
             .catch(function(err) {
-                console.error('Ошибка загрузки данных:', err);
+                console.error('Error loading data:', err);
                 document.getElementById('time-entries-list').innerHTML =
-                    '<div class="tnm-empty-state">Ошибка загрузки данных</div>';
+                    '<div class="tnm-empty-state">Error loading data</div>';
             });
     }
 
-    // Функция для правильного склонения существительных
+    // Function for proper noun pluralization
     function getNounPluralForm(number, one, two, five) {
-        let n = Math.abs(number);
-        n %= 100;
-        if (n >= 5 && n <= 20) {
-            return five;
-        }
-        n %= 10;
-        if (n === 1) {
+        if (number === 1) {
             return one;
         }
-        if (n >= 2 && n <= 4) {
-            return two;
-        }
-        return five;
+        return two;
     }
 </script>
 </body>

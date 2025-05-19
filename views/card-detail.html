@@ -2,12 +2,12 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>T&M Менеджер</title>
+  <title>T&M Manager</title>
   <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
   <link rel="stylesheet" href="../css/style.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
   <style>
-    /* Существующие стили без изменений */
+    /* Existing styles without changes */
     .delete-record {
       color: #CF513D;
       cursor: pointer;
@@ -84,7 +84,7 @@
       display: none;
     }
 
-    /* Новые стили для календаря */
+    /* New styles for calendar */
     .date-group {
       display: flex;
       gap: 8px;
@@ -97,59 +97,59 @@
 </head>
 <body>
 <div class="container">
-  <h2>Учет времени</h2>
+  <h2>Time Tracking</h2>
 
   <div class="tabs">
-    <div class="tab active" data-tab="time">Время</div>
-    <div class="tab" data-tab="history">История</div>
+    <div class="tab active" data-tab="time">Time</div>
+    <div class="tab" data-tab="history">History</div>
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <!-- Форма добавления времени с новым полем календаря -->
-    <h3>Добавить время</h3>
+    <!-- Time adding form with new calendar field -->
+    <h3>Add Time</h3>
     <div class="form-group">
-      <label for="member-select">Пользователь:</label>
+      <label for="member-select">User:</label>
       <select id="member-select">
-        <!-- Список пользователей будет заполнен динамически -->
-        <option value="loading">Загрузка пользователей...</option>
+        <!-- User list will be filled dynamically -->
+        <option value="loading">Loading users...</option>
       </select>
     </div>
     <div class="form-group">
-      <label for="work-date">Дата выполнения:</label>
+      <label for="work-date">Work date:</label>
       <input type="date" id="work-date">
     </div>
     <div class="form-group">
-      <label for="time-input">Время:</label>
-      <input type="text" id="time-input" placeholder="Пример: 1d 2h 30m">
-      <div class="input-help">Формат: Xd Yh Zm (дни, часы, минуты). 1 день = 8 часов.</div>
-      <div class="error-message" id="time-error">Неверный формат. Используйте формат Xd Yh Zm</div>
+      <label for="time-input">Time:</label>
+      <input type="text" id="time-input" placeholder="Example: 1d 2h 30m">
+      <div class="input-help">Format: Xd Yh Zm (days, hours, minutes). 1 day = 8 hours.</div>
+      <div class="error-message" id="time-error">Invalid format. Use format Xd Yh Zm</div>
     </div>
     <div class="form-group">
-      <label for="time-description">Описание:</label>
-      <textarea id="time-description" placeholder="Описание выполненных работ"></textarea>
+      <label for="time-description">Description:</label>
+      <textarea id="time-description" placeholder="Description of work done"></textarea>
     </div>
-    <button class="mod-primary" id="save-time">Сохранить</button>
+    <button class="mod-primary" id="save-time">Save</button>
 
     <div class="summary" id="time-summary">
-      <!-- Здесь будет отображаться общее время -->
+      <!-- Total time will be displayed here -->
     </div>
   </div>
 
   <div class="tab-content" id="history-tab">
     <div class="history-list" id="history-list">
-      <!-- Здесь будет история записей с кнопками удаления -->
+      <!-- Record history with delete buttons will be here -->
     </div>
   </div>
 </div>
 
-<!-- Диалог подтверждения удаления -->
+<!-- Delete confirmation dialog -->
 <div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
   <div class="confirmation-content">
-    <h3>Подтверждение удаления</h3>
-    <p>Вы уверены, что хотите удалить эту запись времени?</p>
+    <h3>Delete Confirmation</h3>
+    <p>Are you sure you want to delete this time record?</p>
     <div class="confirmation-buttons">
-      <button class="cancel-btn" id="cancel-delete">Отмена</button>
-      <button class="mod-danger" id="confirm-delete">Удалить</button>
+      <button class="cancel-btn" id="cancel-delete">Cancel</button>
+      <button class="mod-danger" id="confirm-delete">Delete</button>
     </div>
   </div>
 </div>
@@ -160,7 +160,7 @@
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
 
-  // Функция для парсинга строки времени (без изменений)
+  // Function for parsing time string (unchanged)
   function parseTimeString(timeStr) {
     const result = {
       days: 0,
@@ -169,25 +169,25 @@
     };
 
     if (!timeStr.trim()) {
-      return null; // Пустая строка
+      return null; // Empty string
     }
 
-    // Регулярное выражение для поиска компонентов времени
+    // Regular expression to find time components
     const daysRegex = /(\d+)\s*d/i;
     const hoursRegex = /(\d+)\s*h/i;
     const minutesRegex = /(\d+)\s*m/i;
 
-    // Поиск компонентов в строке
+    // Find components in string
     const daysMatch = timeStr.match(daysRegex);
     const hoursMatch = timeStr.match(hoursRegex);
     const minutesMatch = timeStr.match(minutesRegex);
 
-    // Если не найдено ни одного компонента, возвращаем null
+    // If no components found, return null
     if (!daysMatch && !hoursMatch && !minutesMatch) {
       return null;
     }
 
-    // Заполняем найденные значения
+    // Fill found values
     if (daysMatch) result.days = parseInt(daysMatch[1]);
     if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
     if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
@@ -195,38 +195,38 @@
     return result;
   }
 
-  // Инициализация поля даты при загрузке страницы
+  // Initialize date field on page load
   function initDateField() {
     const dateField = document.getElementById('work-date');
     const today = new Date();
-    // Форматируем дату в формате YYYY-MM-DD для поля input[type="date"]
+    // Format date in YYYY-MM-DD format for input[type="date"] field
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     dateField.value = `${year}-${month}-${day}`;
   }
 
-  // Загрузка пользователей доски
+  // Load board members
   function loadBoardMembers() {
     const memberSelect = document.getElementById('member-select');
-    memberSelect.innerHTML = '<option value="loading">Загрузка пользователей...</option>';
+    memberSelect.innerHTML = '<option value="loading">Loading users...</option>';
 
-    // Сначала получаем текущего пользователя
+    // First get current user
     BoardMembers.getCurrentMember(t)
             .then(function(currentMember) {
-              // Затем получаем всех пользователей доски
+              // Then get all board members
               return BoardMembers.getBoardMembers(t)
                       .then(function(members) {
                         memberSelect.innerHTML = '';
 
-                        // Сортируем пользователей так, чтобы текущий был первым
+                        // Sort users so current user is first
                         members.sort(function(a, b) {
                           if (a.id === currentMember.id) return -1;
                           if (b.id === currentMember.id) return 1;
                           return a.fullName.localeCompare(b.fullName);
                         });
 
-                        // Создаем опции для каждого пользователя
+                        // Create options for each user
                         members.forEach(function(member) {
                           const option = document.createElement('option');
                           option.value = JSON.stringify({
@@ -240,26 +240,26 @@
                       });
             })
             .catch(function(err) {
-              console.error('Ошибка при загрузке пользователей:', err);
-              memberSelect.innerHTML = '<option value="error">Ошибка загрузки пользователей</option>';
+              console.error('Error loading users:', err);
+              memberSelect.innerHTML = '<option value="error">Error loading users</option>';
             });
   }
 
-  // Функция форматирования даты
+  // Date formatting function
   function formatDate(dateString) {
     const date = new Date(dateString);
     return date.toLocaleDateString();
   }
 
-  // Загрузка данных при открытии
+  // Load data on opening
   function loadData() {
     TnMStorage.getCardData(t)
             .then(function(data) {
-              // Заполняем сводку по времени
+              // Fill time summary
               document.getElementById('time-summary').innerHTML =
-                      `<p>Общее затраченное время: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
+                      `<p>Total time spent: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
 
-              // Заполняем историю
+              // Fill history
               const historyList = document.getElementById('history-list');
               historyList.innerHTML = '';
 
@@ -272,20 +272,20 @@
                     item.className = 'history-item';
                     item.dataset.recordId = record.id;
 
-                    // Используем workDate, если она есть, иначе используем date
+                    // Use workDate if available, otherwise use date
                     const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date);
 
-                    // Форматируем время для записи в истории
+                    // Format time for history record
                     const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
 
                     item.innerHTML = `
                       <div class="history-date">${displayDate}</div>
-                      <div class="history-type">Время</div>
+                      <div class="history-type">Time</div>
                       <div class="history-details">
-                        <strong>${timeStr}</strong> - ${record.memberName || 'Пользователь'}: ${record.description || 'Без описания'}
+                        <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
                       </div>
                       <div class="history-actions">
-                        <button class="delete-record" data-record-id="${record.id}">Удалить</button>
+                        <button class="delete-record" data-record-id="${record.id}">Delete</button>
                       </div>
                     `;
 
@@ -293,7 +293,7 @@
                   }
                 });
 
-                // Добавляем обработчики для кнопок удаления
+                // Add handlers for delete buttons
                 document.querySelectorAll('.delete-record').forEach(function(button) {
                   button.addEventListener('click', function() {
                     const recordId = parseInt(this.dataset.recordId);
@@ -301,9 +301,9 @@
                   });
                 });
               } else {
-                historyList.innerHTML = '<p>История пуста</p>';
+                historyList.innerHTML = '<p>History is empty</p>';
               }
-              // Синхронизируем данные с хранилищем доски
+              // Synchronize data with board storage
               t.card('id')
                       .then(function(card) {
                         TnMStorage.syncCardDataWithBoard(t, card.id, data);
@@ -311,7 +311,7 @@
             });
   }
 
-  // Остальные функции без изменений
+  // Other functions unchanged
   function showDeleteConfirmation(recordId) {
     currentRecordToDelete = recordId;
     document.getElementById('confirmation-dialog').style.display = 'flex';
@@ -325,22 +325,22 @@
   function deleteRecord(recordId) {
     TnMStorage.deleteTimeRecord(t, recordId)
             .then(function() {
-              // Обновление данных после удаления
+              // Update data after deletion
               loadData();
 
-              // Уведомление Trello об обновлении бейджей
+              // Notify Trello of badge updates
               t.card('id')
                       .then(function(card) {
                         return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
                       });
             })
             .catch(function(err) {
-              console.error('Ошибка при удалении записи:', err);
-              alert('Не удалось удалить запись: ' + err.message);
+              console.error('Error deleting record:', err);
+              alert('Failed to delete record: ' + err.message);
             });
   }
 
-  // Управление табами
+  // Tab management
   document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -351,7 +351,7 @@
     });
   });
 
-  // Сохранение времени
+  // Save time
   document.getElementById('save-time').addEventListener('click', function() {
     const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
@@ -359,53 +359,53 @@
     const memberSelect = document.getElementById('member-select');
     const workDateInput = document.getElementById('work-date').value;
 
-    // Проверяем, что выбран пользователь
+    // Check that user is selected
     if (memberSelect.value === 'loading' || memberSelect.value === 'error') {
-      alert('Пожалуйста, дождитесь загрузки пользователей или перезагрузите страницу');
+      alert('Please wait for users to load or reload the page');
       return;
     }
 
-    // Проверяем, что указана дата
+    // Check that date is specified
     if (!workDateInput) {
-      alert('Пожалуйста, укажите дату выполнения работы');
+      alert('Please specify the work date');
       return;
     }
 
-    // Преобразуем строку даты в объект Date и затем в ISO строку
+    // Convert date string to Date object and then to ISO string
     const workDate = new Date(workDateInput);
 
-    // Проверяем корректность даты
+    // Check date validity
     if (isNaN(workDate.getTime())) {
-      alert('Пожалуйста, укажите корректную дату');
+      alert('Please specify a valid date');
       return;
     }
 
-    // Получаем данные выбранного пользователя
+    // Get selected user data
     const selectedMember = JSON.parse(memberSelect.value);
 
-    // Парсим строку времени
+    // Parse time string
     const time = parseTimeString(timeInput);
 
     if (!time) {
-      // Показываем ошибку
+      // Show error
       timeError.style.display = 'block';
       return;
     }
 
-    // Скрываем ошибку, если она была показана
+    // Hide error if it was shown
     timeError.style.display = 'none';
 
-    // Проверяем, что указано хоть какое-то время
+    // Check that some time is specified
     if (time.days === 0 && time.hours === 0 && time.minutes === 0) {
-      // Показываем ошибку
+      // Show error
       timeError.style.display = 'block';
       return;
     }
 
-    // Получаем данные карточки
+    // Get card data
     TnMStorage.getCardData(t)
             .then(function(data) {
-              // Создаем новую запись с информацией о выбранном пользователе и дате
+              // Create new record with selected user and date information
               const newRecord = {
                 id: Date.now(),
                 type: 'time',
@@ -413,18 +413,18 @@
                 hours: parseInt(time.hours) || 0,
                 minutes: parseInt(time.minutes) || 0,
                 description: description,
-                date: new Date().toISOString(), // Фактическая дата добавления
-                workDate: workDate.toISOString(), // Дата выполнения работы
+                date: new Date().toISOString(), // Actual add date
+                workDate: workDate.toISOString(), // Work date
                 memberId: selectedMember.id,
                 memberName: selectedMember.name
               };
 
-              // Обновляем общее время
+              // Update total time
               data.days = (parseInt(data.days) || 0) + parseInt(time.days || 0);
               data.hours = (parseInt(data.hours) || 0) + parseInt(time.hours || 0);
               data.minutes = (parseInt(data.minutes) || 0) + parseInt(time.minutes || 0);
 
-              // Нормализуем значения (60 минут = 1 час, 8 часов = 1 день)
+              // Normalize values (60 minutes = 1 hour, 8 hours = 1 day)
               while (data.minutes >= 60) {
                 data.minutes -= 60;
                 data.hours += 1;
@@ -435,23 +435,23 @@
                 data.days += 1;
               }
 
-              // Добавляем запись в историю
+              // Add record to history
               if (!data.history) data.history = [];
               data.history.push(newRecord);
 
-              // Сохраняем обновленные данные
+              // Save updated data
               return TnMStorage.saveCardData(t, data);
             })
             .then(function() {
-              // Очистка формы
+              // Clear form
               document.getElementById('time-input').value = '';
               document.getElementById('time-description').value = '';
-              // Поле даты оставляем с текущей датой
+              // Keep date field with current date
 
-              // Обновление данных
+              // Update data
               loadData();
 
-              // Уведомление Trello об обновлении бейджей
+              // Notify Trello of badge updates
               t.card('id')
                       .then(function(card) {
                         return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
@@ -462,7 +462,7 @@
             });
   });
 
-  // Обработчики для диалога подтверждения
+  // Handlers for confirmation dialog
   document.getElementById('cancel-delete').addEventListener('click', function() {
     hideDeleteConfirmation();
   });
@@ -474,20 +474,20 @@
     }
   });
 
-  // Обработчик для поля ввода времени
+  // Handler for time input field
   document.getElementById('time-input').addEventListener('input', function() {
-    // Скрываем ошибку при изменении поля
+    // Hide error when field changes
     document.getElementById('time-error').style.display = 'none';
   });
 
-  // Загрузка данных при открытии
+  // Load data on opening
   document.addEventListener('DOMContentLoaded', function() {
-    initDateField(); // Инициализируем поле даты
+    initDateField(); // Initialize date field
     loadData();
     loadBoardMembers();
   });
 
-  // Обработка изменений данных
+  // Handle data changes
   t.render(function() {
     loadData();
   });

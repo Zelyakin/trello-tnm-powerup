@@ -1,26 +1,26 @@
-// js/client.js (изменение существующего файла)
+// js/client.js (modification of existing file)
 /* global TrelloPowerUp */
 
-// Функция миграции старых данных в новый формат
+// Function to migrate old data to new format
 function migrateData(t, data) {
-    // Если в данных есть старое поле time, но нет новых полей
+    // If data has old time field but no new fields
     if (data && data.time !== undefined && (data.days === undefined || data.hours === undefined || data.minutes === undefined)) {
-        console.log('Миграция данных из старого формата в новый');
+        console.log('Migrating data from old to new format');
 
-        // Конвертируем время из часов в новый формат (1 день = 8 часов)
+        // Convert time from hours to new format (1 day = 8 hours)
         const totalMinutes = Math.round(data.time * 60);
         data.days = Math.floor(totalMinutes / (8 * 60)) || 0;
         data.hours = Math.floor((totalMinutes % (8 * 60)) / 60) || 0;
         data.minutes = totalMinutes % 60 || 0;
 
-        // Сохраняем обновленные данные
+        // Save updated data
         t.set('card', 'shared', 'tnm-data', data);
     }
 
     return data;
 }
 
-// Обновленная функция форматирования времени в едином формате
+// Updated function to format time in unified format
 function formatTime(days, hours, minutes) {
     days = parseInt(days) || 0;
     hours = parseInt(hours) || 0;
@@ -37,16 +37,16 @@ function formatTime(days, hours, minutes) {
     return result.join(' ');
 }
 
-// Инициализация Power-Up
+// Power-Up initialization
 TrelloPowerUp.initialize({
-    // Кнопка в меню карточки
+    // Card menu button
     'card-buttons': function(t, options) {
         return [{
             icon: './img/icon.svg',
             text: 'T&M',
             callback: function(t) {
                 return t.popup({
-                    title: 'Учет времени',
+                    title: 'Time Tracking',
                     url: './views/card-detail.html',
                     height: 400
                 });
@@ -54,62 +54,62 @@ TrelloPowerUp.initialize({
         }];
     },
 
-    // Бейдж на карточке
+    // Card badge
     'card-badges': function(t, options) {
         return t.get('card', 'shared', 'tnm-data')
             .then(function(data) {
-                // Мигрируем данные, если нужно
+                // Migrate data if needed
                 data = migrateData(t, data);
 
                 if (!data) return [];
 
-                // Проверяем, есть ли затраченное время
+                // Check if there is time spent
                 const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
 
                 if (!hasTime) return [];
 
-                // Используем нашу локальную функцию форматирования
+                // Use our local formatting function
                 return [{
                     text: formatTime(data.days, data.hours, data.minutes),
                     color: 'blue'
                 }];
             })
             .catch(function(err) {
-                console.error('Ошибка получения данных:', err);
+                console.error('Error getting data:', err);
                 return [];
             });
     },
 
-    // Детальный бейдж при открытии карточки
+    // Detailed badge when card is open
     'card-detail-badges': function(t, options) {
         return t.get('card', 'shared', 'tnm-data')
             .then(function(data) {
                 if (!data) return [];
 
-                // Проверяем, есть ли затраченное время
+                // Check if there is time spent
                 const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
 
                 if (!hasTime) return [{
-                    title: 'Время',
-                    text: 'Нет данных',
+                    title: 'Time',
+                    text: 'No data',
                     color: null,
                     callback: function(t) {
                         return t.popup({
-                            title: 'Учет времени',
+                            title: 'Time Tracking',
                             url: './views/card-detail.html',
                             height: 400
                         });
                     }
                 }];
 
-                // Используем нашу локальную функцию форматирования
+                // Use our local formatting function
                 return [{
-                    title: 'Время',
-                    text: 'Затраченное время: ' + formatTime(data.days, data.hours, data.minutes),
+                    title: 'Time',
+                    text: 'Time spent: ' + formatTime(data.days, data.hours, data.minutes),
                     color: 'blue',
                     callback: function(t) {
                         return t.popup({
-                            title: 'Учет времени',
+                            title: 'Time Tracking',
                             url: './views/card-detail.html',
                             height: 400
                         });
@@ -120,7 +120,7 @@ TrelloPowerUp.initialize({
 
     'card-back-section': function(t, options) {
         return {
-            title: 'Учет времени',
+            title: 'Time Tracking',
             icon: './img/icon.svg',
             content: {
                 type: 'iframe',
@@ -137,10 +137,10 @@ TrelloPowerUp.initialize({
                     dark: 'https://zelyakin.github.io/trello-tnm-powerup/img/export-white.svg',
                     light: 'https://zelyakin.github.io/trello-tnm-powerup/img/export-dark.svg'
                 },
-                text: 'Экспорт T&M',
+                text: 'Export T&M',
                 callback: function(t) {
                     return t.popup({
-                        title: 'Экспорт данных о времени',
+                        title: 'Export Time Data',
                         url: `./views/export-time.html?v=${Date.now()}`,
                         height: 400
                     });
@@ -151,7 +151,7 @@ TrelloPowerUp.initialize({
 
     'show-settings': function(t, options) {
         return t.popup({
-            title: 'Настройки T&M',
+            title: 'T&M Settings',
             url: './views/settings.html',
             height: 300
         });

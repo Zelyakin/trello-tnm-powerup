@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Экспорт времени T&M</title>
+    <title>T&M Time Export</title>
     <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
     <link rel="stylesheet" href="../css/style.css">
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
@@ -88,18 +88,18 @@
 </head>
 <body>
 <div>
-    <h2>Экспорт затраченного времени</h2>
-    <p>Экспорт данных о затраченном времени со всех карточек доски в CSV файл</p>
+    <h2>Export Time Tracking Data</h2>
+    <p>Export time tracking data from all cards on the board to a CSV file</p>
 
     <div class="filter-container">
-        <label><strong>Фильтр по дате:</strong></label>
+        <label><strong>Date filter:</strong></label>
         <div class="date-range">
             <div class="form-group">
-                <label for="start-date">С:</label>
+                <label for="start-date">From:</label>
                 <input type="date" id="start-date">
             </div>
             <div class="form-group">
-                <label for="end-date">По:</label>
+                <label for="end-date">To:</label>
                 <input type="date" id="end-date">
             </div>
         </div>
@@ -107,22 +107,22 @@
         <div class="checkbox-group">
             <label>
                 <input type="checkbox" id="include-empty" checked>
-                Включать карточки без затраченного времени
+                Include cards without time tracking data
             </label>
         </div>
     </div>
 
     <div class="button-container">
-        <button id="export-btn" class="mod-primary">Экспортировать в CSV</button>
+        <button id="export-btn" class="mod-primary">Export to CSV</button>
     </div>
 
-    <p class="note">Примечание: Будут экспортированы данные только для карточек, с которыми работал текущий пользователь.</p>
+    <p class="note">Note: Only data for cards that the current user has worked with will be exported.</p>
 
     <div class="progress-container" id="progress-container">
         <div class="progress-bar">
             <div class="progress-bar-fill" id="progress-bar-fill"></div>
         </div>
-        <div class="progress-status" id="progress-status">Обработано 0 из 0 карточек</div>
+        <div class="progress-status" id="progress-status">Processed 0 of 0 cards</div>
     </div>
 
     <p class="error-message" id="error-message"></p>
@@ -132,18 +132,18 @@
 <script>
     const t = TrelloPowerUp.iframe();
 
-    // Функция для инициализации полей даты
+    // Function to initialize date fields
     function initDateFields() {
         const today = new Date();
         const oneMonthAgo = new Date();
         oneMonthAgo.setMonth(today.getMonth() - 1);
 
-        // Форматируем даты в формате YYYY-MM-DD
+        // Format dates in YYYY-MM-DD format
         document.getElementById('start-date').value = formatDateForInput(oneMonthAgo);
         document.getElementById('end-date').value = formatDateForInput(today);
     }
 
-    // Форматирование даты для поля input[type="date"]
+    // Formatting date for input[type="date"]
     function formatDateForInput(date) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -151,7 +151,7 @@
         return `${year}-${month}-${day}`;
     }
 
-    // Функция для форматирования даты в читаемом виде
+    // Function to format date in readable form
     function formatDateForDisplay(dateString) {
         if (!dateString) return '';
         const date = new Date(dateString);
@@ -160,95 +160,95 @@
         return date.toLocaleDateString();
     }
 
-    // Функция для проверки, находится ли дата в выбранном диапазоне
+    // Function to check if date is in selected range
     function isDateInRange(dateString, startDate, endDate) {
         if (!dateString) return false;
 
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return false;
 
-        // Сбрасываем время до 00:00:00 для корректного сравнения дат
+        // Reset time to 00:00:00 for correct date comparison
         date.setHours(0, 0, 0, 0);
 
         return date >= startDate && date <= endDate;
     }
 
-    // Функция для конвертации времени в минуты
+    // Function to convert time to minutes
     function convertToMinutes(days, hours, minutes) {
-        // 1 день = 8 часов = 480 минут
+        // 1 day = 8 hours = 480 minutes
         return (days * 8 * 60) + (hours * 60) + minutes;
     }
 
-    // Экспорт данных в CSV
+    // Export data to CSV
     async function exportToCSV() {
         try {
-            // Получаем параметры фильтрации
+            // Get filter parameters
             const startDateValue = document.getElementById('start-date').value;
             const endDateValue = document.getElementById('end-date').value;
             const includeEmpty = document.getElementById('include-empty').checked;
 
-            // Преобразуем строки даты в объекты Date
+            // Convert date strings to Date objects
             const startDate = new Date(startDateValue);
             const endDate = new Date(endDateValue);
 
-            // Устанавливаем время для корректного сравнения (начало и конец дня)
+            // Set time for correct comparison (start and end of day)
             startDate.setHours(0, 0, 0, 0);
             endDate.setHours(23, 59, 59, 999);
 
-            // Проверяем корректность дат
+            // Check date validity
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                showError('Пожалуйста, укажите корректный диапазон дат');
+                showError('Please specify a valid date range');
                 return;
             }
 
             if (startDate > endDate) {
-                showError('Дата начала не может быть позже даты окончания');
+                showError('Start date cannot be later than end date');
                 return;
             }
 
-            // Показываем прогресс
+            // Show progress
             const progressContainer = document.getElementById('progress-container');
             const progressBarFill = document.getElementById('progress-bar-fill');
             const progressStatus = document.getElementById('progress-status');
 
             progressContainer.style.display = 'block';
 
-            // Инициализируем CSV-контент
-            let csvContent = '"Дата","Задача","Пользователь","Потраченное время","Потраченное время (минуты)","Описание работы"\n';
+            // Initialize CSV content
+            let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
 
-            // Получаем список всех карточек, с которыми работал пользователь
+            // Get list of all cards the user has worked with
             const knownCardIds = await TnMStorage.getKnownCardIds(t);
             const allCards = await t.cards('all');
 
-            // Фильтруем только известные карточки
+            // Filter only known cards
             const cards = allCards.filter(card => knownCardIds.includes(card.id));
 
             totalCards = cards.length;
             processedCards = 0;
 
-            progressStatus.textContent = `Обработано 0 из ${totalCards} карточек`;
+            progressStatus.textContent = `Processed 0 of ${totalCards} cards`;
 
-            // Обрабатываем каждую карточку
+            // Process each card
             for (const card of cards) {
                 try {
-                    // Получаем данные о карточке из хранилища доски
+                    // Get card data from board storage
                     const data = await TnMStorage.getCardDataFromBoard(t, card.id);
 
                     if (data) {
-                        // Фильтруем записи по дате (используем рабочую дату, если она есть, иначе - фактическую)
+                        // Filter entries by date (use work date if available, otherwise - actual date)
                         const filteredHistory = data.history ? data.history.filter(entry => {
                             const dateToCheck = entry.workDate || entry.date;
                             return entry.type === 'time' && isDateInRange(dateToCheck, startDate, endDate);
                         }) : [];
 
-                        // Если есть записи истории или нужно включать пустые карточки
+                        // If there are history entries or need to include empty cards
                         if (filteredHistory.length > 0 || includeEmpty) {
                             if (filteredHistory.length > 0) {
-                                // Добавляем каждую запись в CSV
+                                // Add each entry to CSV
                                 filteredHistory.forEach(entry => {
                                     const dateStr = formatDateForDisplay(entry.workDate || entry.date);
-                                    const cardName = card.name.replace(/"/g, '""'); // Экранируем кавычки
-                                    const userName = (entry.memberName || 'Пользователь').replace(/"/g, '""');
+                                    const cardName = card.name.replace(/"/g, '""'); // Escape quotes
+                                    const userName = (entry.memberName || 'User').replace(/"/g, '""');
                                     const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
                                     const timeMinutes = convertToMinutes(entry.days || 0, entry.hours || 0, entry.minutes || 0);
                                     const description = (entry.description || '').replace(/"/g, '""');
@@ -256,29 +256,29 @@
                                     csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
                                 });
                             } else if (includeEmpty) {
-                                // Добавляем пустую запись для карточки
+                                // Add empty entry for card
                                 const cardName = card.name.replace(/"/g, '""');
                                 csvContent += `"","${cardName}","","0m","0",""\n`;
                             }
                         }
                     }
                 } catch (error) {
-                    console.error(`Ошибка при обработке карточки ${card.id}:`, error);
+                    console.error(`Error processing card ${card.id}:`, error);
                 }
 
-                // Обновляем прогресс
+                // Update progress
                 processedCards++;
                 const progressPercent = (processedCards / totalCards) * 100;
                 progressBarFill.style.width = `${progressPercent}%`;
-                progressStatus.textContent = `Обработано ${processedCards} из ${totalCards} карточек`;
+                progressStatus.textContent = `Processed ${processedCards} of ${totalCards} cards`;
             }
 
-            // Создаем ссылку для скачивания
+            // Create download link
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
 
-            // Формируем имя файла с текущей датой
+            // Create filename with current date
             const now = new Date();
             const fileName = `trello-time-export-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
 
@@ -288,39 +288,39 @@
             link.click();
             document.body.removeChild(link);
 
-            // Скрываем прогресс после небольшой задержки
+            // Hide progress after a short delay
             setTimeout(() => {
                 progressContainer.style.display = 'none';
                 progressBarFill.style.width = '0%';
             }, 2000);
 
         } catch (error) {
-            console.error('Ошибка при экспорте данных:', error);
-            showError('Ошибка при экспорте данных: ' + error.message);
+            console.error('Error exporting data:', error);
+            showError('Error exporting data: ' + error.message);
         }
     }
 
-    // Функция для отображения ошибки
+    // Function to display error
     function showError(message) {
         const errorElement = document.getElementById('error-message');
         errorElement.textContent = message;
         errorElement.style.display = 'block';
 
-        // Скрываем прогресс
+        // Hide progress
         document.getElementById('progress-container').style.display = 'none';
     }
 
-    // Инициализация при загрузке страницы
+    // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-        // Инициализация полей даты
+        // Initialize date fields
         initDateFields();
 
-        // Обработчик для кнопки экспорта
+        // Handler for export button
         document.getElementById('export-btn').addEventListener('click', function() {
-            // Скрываем предыдущие ошибки
+            // Hide previous errors
             document.getElementById('error-message').style.display = 'none';
 
-            // Начинаем экспорт
+            // Start export
             exportToCSV();
         });
     });

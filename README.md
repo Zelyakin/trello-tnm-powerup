@@ -1,108 +1,109 @@
-# T&M Power-Up для Trello
+# T&M Power-Up for Trello
 
-Это Power-Up для Trello, который позволяет отслеживать затраченное время на карточках.
+This is a Power-Up for Trello that allows you to track time spent on cards.
 
-## Возможности
+## Features
 
-- Отслеживание затраченного времени на задачи в удобном формате (1d 2h 30m)
-- Выбор даты выполнения работы через календарь
-- Выбор пользователя, от имени которого будет добавлено время (по умолчанию - текущий пользователь)
-- История всех записей с указанием пользователя и даты выполнения
-- Возможность удаления записей времени из истории
-- Экспорт данных о затраченном времени в CSV-файл с возможностью фильтрации по датам
-- Полный сброс всех данных на доске при необходимости
-- Настройка почасовой ставки
-- Отображение бейджей с затраченным временем на карточках
-- Отображение сводки времени на обратной стороне карточки
-- Кнопка для принудительного обновления Power-Up (очистка кеша)
+- Track time spent on tasks in a convenient format (1d 2h 30m)
+- Select work date via calendar
+- Select user on behalf of whom time will be added (current user by default)
+- History of all entries with user and date indication
+- Ability to delete time entries from history
+- Export time tracking data to CSV file with date filtering
+- Complete reset of all data on the board if needed
+- Hourly rate settings
+- Display badges with time spent on cards
+- Display time summary on the back of the card
+- Button for forced Power-Up update (cache clearing)
 
-## Установка
+## Installation
 
-1. Клонируйте репозиторий
-2. Разместите файлы на GitHub Pages или другом веб-сервере
-3. Зарегистрируйте Power-Up в Trello Power-Up Admin: https://trello.com/power-ups/admin
-4. Добавьте Power-Up на вашу доску Trello
+1. Clone the repository
+2. Host files on GitHub Pages or another web server
+3. Register the Power-Up in Trello Power-Up Admin: https://trello.com/power-ups/admin
+4. Add the Power-Up to your Trello board
 
-## Использование
+## Usage
 
-1. Откройте карточку на доске Trello
-2. Нажмите кнопку "T&M" в меню карточки
-3. Выберите пользователя, от имени которого вы хотите добавить время (по умолчанию выбран текущий пользователь)
-4. Выберите дату выполнения работы в календаре (по умолчанию установлена текущая дата)
-5. Добавьте затраченное время в формате "1d 2h 30m" (дни, часы, минуты)
-   - Примеры: "2h 30m", "1d", "45m", "1d 6h"
-   - Примечание: 1 день = 8 часов рабочего времени
-6. Просмотрите сводку времени на обратной стороне карточки
-7. При необходимости удалите неправильные записи с помощью кнопки "Удалить" в разделе "История"
+1. Open a card on your Trello board
+2. Click the "T&M" button in the card menu
+3. Select the user on behalf of whom you want to add time (current user is selected by default)
+4. Select the work date in the calendar (current date is set by default)
+5. Add time spent in the format "1d 2h 30m" (days, hours, minutes)
+    - Examples: "2h 30m", "1d", "45m", "1d 6h"
+    - Note: 1 day = 8 hours of work time
+6. View time summary on the back of the card
+7. If needed, delete incorrect entries using the "Delete" button in the "History" section
 
-### Экспорт данных о затраченном времени
+### Exporting Time Tracking Data
 
-1. Нажмите кнопку "Экспорт T&M" на панели инструментов доски
-2. Укажите диапазон дат для фильтрации (по умолчанию установлен последний месяц)
-3. При необходимости отключите опцию "Включать карточки без затраченного времени"
-4. Нажмите кнопку "Экспортировать в CSV"
-5. CSV-файл будет автоматически загружен на ваш компьютер
-6. Формат файла: "дата","задача","пользователь","потраченное время","потраченное время (минуты)","описание работы"
-7. Столбец "потраченное время (минуты)" содержит общее время, преобразованное в минуты, для удобства обработки в Excel
+1. Click the "Export T&M" button on the board toolbar
+2. Specify date range for filtering (last month is set by default)
+3. Optionally disable the "Include cards without time tracking data" option
+4. Click the "Export to CSV" button
+5. The CSV file will be automatically downloaded to your computer
+6. File format: "date","task","user","time spent","time spent (minutes)","work description"
+7. The "time spent (minutes)" column contains total time converted to minutes for easy processing in Excel
 
-### Управление данными
+### Managing Data
 
-- Для очистки кеша и обновления Power-Up нажмите кнопку "Обновить T&M" на панели инструментов доски
-- Для полного сброса всех данных на доске нажмите кнопку "Удалить все данные" в том же диалоговом окне (будьте осторожны, это действие необратимо!)
+- To clear cache and update the Power-Up, click the "Update T&M" button on the board toolbar
+- To completely reset all data on the board, click the "Delete All Data" button in the same dialog (be careful, this action is irreversible!)
 
-## Обновление Power-Up
+## Updating the Power-Up
 
-Если вы видите устаревшую версию Power-Up после обновления кода:
+If you see an outdated version of the Power-Up after updating the code:
 
-1. Нажмите кнопку "Обновить T&M" на панели инструментов доски
-2. В открывшемся окне нажмите "Очистить кеш и перезагрузить"
-3. Перезагрузите страницу с доской (Ctrl+F5 или Cmd+Shift+R)
+1. Click the "Update T&M" button on the board toolbar
+2. In the opened window, click "Clear Cache and Reload"
+3. Reload the board page (Ctrl+F5 or Cmd+Shift+R)
 
-## Разработка
+## Development
 
-- Используйте `index.html` в качестве точки входа
-- Основной код находится в `js/client.js`
-- Утилиты для работы с хранилищем в `js/storage.js`
-- Утилиты для работы с пользователями доски в `js/board-members.js`
-- Интерфейс для работы с карточкой в `views/card-detail.html`
-- Отображение на обратной стороне карточки в `views/card-back.html`
-- Настройки Power-Up в `views/settings.html`
-- Очистка кеша и сброс данных в `views/clear-cache.html`
-- Экспорт данных в CSV в `views/export-time.html`
+- Use `index.html` as the entry point
+- Main code is in `js/client.js`
+- Storage utilities in `js/storage.js`
+- Board member utilities in `js/board-members.js`
+- Card interface in `views/card-detail.html`
+- Card back display in `views/card-back.html`
+- Power-Up settings in `views/settings.html`
+- Cache clearing and data reset in `views/clear-cache.html`
+- CSV data export in `views/export-time.html`
 
-## Технические детали
+## Technical Details
 
-Power-Up использует хранилище Trello для сохранения данных:
-- Данные карточек хранятся в области 'card', 'shared', 'tnm-data'
-- Копии данных карточек также хранятся в области 'board', 'shared', 'tnm-card-data-[cardId]'
-- Настройки доски хранятся в области 'board', 'shared', 'tnm-settings'
-- Маркер версии кеша хранится в области 'board', 'shared', 'tnm-cache-version'
-- Список ID карточек с данными хранится в 'board', 'shared', 'tnm-known-card-ids'
+The Power-Up uses Trello storage to save data:
+- Card data is stored in 'card', 'shared', 'tnm-data'
+- Copies of card data are also stored in 'board', 'shared', 'tnm-card-data-[cardId]'
+- Board settings are stored in 'board', 'shared', 'tnm-settings'
+- Cache version marker is stored in 'board', 'shared', 'tnm-cache-version'
+- List of card IDs with data is stored in 'board', 'shared', 'tnm-known-card-ids'
 
-### Расчет времени
-- 1 день (d) = 8 часов рабочего времени
-- 1 час (h) = 60 минут
-- При добавлении времени автоматически производится нормализация:
-   - 60 минут = 1 час
-   - 8 часов = 1 день
+### Time Calculation
+- 1 day (d) = 8 working hours
+- 1 hour (h) = 60 minutes
+- When adding time, normalization is automatically performed:
+    - 60 minutes = 1 hour
+    - 8 hours = 1 day
 
 ## TODO
 
-- [x] Добавить экспорт данных о затраченном времени в CSV
-- [ ] Добавить версионирование в URL для предотвращения проблем с кешированием
-- [ ] Добавить возможность фильтрации по пользователям
-- [ ] Улучшить мобильную поддержку
-- [ ] Добавить поддержку различных форматов дат и времени
-- [ ] Реализовать автоматическое резервное копирование данных
+- [x] Add export of time tracking data to CSV
+- [ ] Add versioning in URL to prevent caching issues
+- [ ] Add ability to filter by users
+- [ ] Improve mobile support
+- [ ] Add support for different date and time formats
+- [ ] Implement automatic data backup
+- [ ] Add rate calculation
 
-## Структура хранимых данных
+## Data Structure
 
 ```javascript
-// Структура данных карточки
+// Card data structure
 {
-  days: 0, // Дни (1 день = 8 часов)
-  hours: 2, // Часы
-  minutes: 30, // Минуты
+  days: 0, // Days (1 day = 8 hours)
+  hours: 2, // Hours
+  minutes: 30, // Minutes
   history: [
     {
       id: 1620000000001,
@@ -110,17 +111,17 @@ Power-Up использует хранилище Trello для сохранен�
       days: 0,
       hours: 2,
       minutes: 30,
-      description: "Работа над задачей",
-      date: "2025-05-11T14:30:00.000Z", // Фактическая дата добавления записи
-      workDate: "2025-05-10T00:00:00.000Z", // Дата выполнения работы, выбранная в календаре
+      description: "Work on task",
+      date: "2025-05-11T14:30:00.000Z", // Actual date of adding the entry
+      workDate: "2025-05-10T00:00:00.000Z", // Work date selected in calendar
       memberId: "user123",
-      memberName: "Иван Петров"
+      memberName: "John Doe"
     }
   ]
 }
 
-// Структура настроек доски
+// Board settings structure
 {
   hourlyRate: 1500,
-  currency: "RUB"
+  currency: "USD"
 }

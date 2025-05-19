@@ -1,10 +1,10 @@
 {
   "name": "T&M",
-  "details": "Учет затраченного времени на карточках Trello",
+  "details": "Time tracking for Trello cards",
   "icon": {
     "url": "./img/icon.png"
   },
-  "author": "Ваше имя",
+  "author": "Your name",
   "capabilities": [
     "card-buttons",
     "card-badges",
