@@ -1,0 +1,6 @@
+/*
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self' https://p.trellocdn.com; script-src 'self' 'unsafe-inline' https://p.trellocdn.com; style-src 'self' 'unsafe-inline' https://p.trellocdn.com; frame-ancestors https://trello.com
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer-when-downgrade
+  X-Frame-Options: ALLOW-FROM https://trello.com
