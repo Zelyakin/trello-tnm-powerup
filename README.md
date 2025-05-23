@@ -93,6 +93,7 @@ The Power-Up uses Trello storage to save data:
 - [ ] Add ability to filter by users
 - [ ] Improve mobile support
 - [ ] Add support for different date and time formats
+- [ ] Add support for decimal time input (e.g., 2.5d should convert to 2d 4h)
 - [ ] Implement automatic data backup
 - [ ] Add rate calculation
 

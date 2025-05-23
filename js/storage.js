@@ -265,7 +265,7 @@ const TnMStorage = {
         return date.toLocaleDateString();
     },
 
-    // New function: parse time string
+    // Updated function: parse time string with decimal validation
     parseTimeString: function(timeStr) {
         const result = {
             days: 0,
@@ -275,6 +275,11 @@ const TnMStorage = {
 
         if (!timeStr || !timeStr.trim()) {
             return null; // Empty string
+        }
+
+        // Check for decimal numbers in the input - this is not allowed
+        if (/\d+\.\d+/.test(timeStr)) {
+            return null; // Decimal numbers found - invalid format
         }
 
         // Regular expression to find time components
