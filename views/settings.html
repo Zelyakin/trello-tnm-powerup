@@ -81,6 +81,14 @@
       text-align: center;
     }
 
+    .info-text {
+      color: #5E6C84;
+      font-size: 12px;
+      margin-top: 8px;
+      text-align: center;
+      font-style: italic;
+    }
+
     /* Styles for confirmation dialog */
     .confirmation-dialog {
       position: fixed;
@@ -153,6 +161,7 @@
     <button id="reset-all-data-btn" class="mod-danger">Delete All Data</button>
   </div>
   <p class="warning-text">WARNING! This action is irreversible and will delete all time tracking data from all cards on the board.</p>
+  <p class="info-text">Note: Data from individual cards will be cleared when they are next opened.</p>
 
   <p id="status-message">Cache cleared. Reloading...</p>
   <p id="error-message"></p>
@@ -218,13 +227,13 @@
     // Delete all data
     TnMStorage.resetAllData(t)
             .then(function() {
-              document.getElementById('status-message').textContent = 'All data successfully deleted. Reloading...';
+              document.getElementById('status-message').textContent = 'Board-level data deleted. Individual cards will be cleared when opened. Reloading...';
 
-              // Close window and reload page after 2 seconds
+              // Close window and reload page after 3 seconds
               setTimeout(function() {
                 t.closePopup();
                 window.location.reload(true);
-              }, 2000);
+              }, 3000);
             })
             .catch(function(error) {
               console.error('Error deleting data:', error);

@@ -15,7 +15,7 @@
   ],
   "connectors": {
     "iframe": {
-      "url": "./index.html"
+      "url": "https://trello-tnm-powerup.pages.dev/index.html"
     }
   }
 }

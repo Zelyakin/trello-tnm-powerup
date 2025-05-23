@@ -122,7 +122,7 @@
       <label for="time-input">Time:</label>
       <input type="text" id="time-input" placeholder="Example: 1d 2h 30m">
       <div class="input-help">Format: Xd Yh Zm (days, hours, minutes). 1 day = 8 hours.</div>
-      <div class="error-message" id="time-error">Invalid format. Use format Xd Yh Zm</div>
+      <div class="error-message" id="time-error">Invalid format. Use format Xd Yh Zm. Decimal numbers not allowed.</div>
     </div>
     <div class="form-group">
       <label for="time-description">Description:</label>
@@ -160,7 +160,7 @@
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
 
-  // Function for parsing time string (unchanged)
+  // Function for parsing time string with decimal validation
   function parseTimeString(timeStr) {
     const result = {
       days: 0,
@@ -170,6 +170,11 @@
 
     if (!timeStr.trim()) {
       return null; // Empty string
+    }
+
+    // Check for decimal numbers in the input - this is not allowed
+    if (/\d+\.\d+/.test(timeStr)) {
+      return null; // Decimal numbers found - invalid format
     }
 
     // Regular expression to find time components
@@ -194,7 +199,6 @@
 
     return result;
   }
-
   // Initialize date field on page load
   function initDateField() {
     const dateField = document.getElementById('work-date');

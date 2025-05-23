@@ -42,7 +42,7 @@ TrelloPowerUp.initialize({
     // Card menu button
     'card-buttons': function(t, options) {
         return [{
-            icon: './img/icon.svg',
+            icon: './img/icon.png',
             text: 'T&M',
             callback: function(t) {
                 return t.popup({
@@ -121,7 +121,7 @@ TrelloPowerUp.initialize({
     'card-back-section': function(t, options) {
         return {
             title: 'Time Tracking',
-            icon: './img/icon.svg',
+            icon: './img/icon.png',
             content: {
                 type: 'iframe',
                 url: t.signUrl('./views/card-back.html'),
