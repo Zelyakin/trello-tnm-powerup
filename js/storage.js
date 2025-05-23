@@ -1,20 +1,44 @@
 /* Utilities for working with Trello storage */
 
 const TnMStorage = {
-    // Get T&M data for card
+// Get T&M data for card
     getCardData: function(t) {
-        return t.get('card', 'shared', 'tnm-data', {
-            days: 0,
-            hours: 0,
-            minutes: 0,
-            history: []
-        }).then(function(data) {
-            // After getting data, sync it with board storage
-            t.card('id').then(function(card) {
-                TnMStorage.syncCardDataWithBoard(t, card.id, data);
+        return Promise.all([
+            t.get('card', 'shared', 'tnm-data', {
+                days: 0,
+                hours: 0,
+                minutes: 0,
+                history: []
+            }),
+            t.get('board', 'shared', 'tnm-global-reset-timestamp', 0),
+            t.get('card', 'shared', 'tnm-last-reset-check', 0)
+        ])
+            .then(function([data, globalResetTime, lastResetCheck]) {
+                // If there was a global reset after this card was last checked, clear its data
+                if (globalResetTime > lastResetCheck) {
+                    console.log('Clearing card data due to global reset');
+                    const emptyData = {
+                        days: 0,
+                        hours: 0,
+                        minutes: 0,
+                        history: []
+                    };
+
+                    // Save empty data and update reset check timestamp
+                    return Promise.all([
+                        t.set('card', 'shared', 'tnm-data', emptyData),
+                        t.set('card', 'shared', 'tnm-last-reset-check', Date.now())
+                    ]).then(function() {
+                        return emptyData;
+                    });
+                }
+
+                // After getting data, sync it with board storage
+                t.card('id').then(function(card) {
+                    TnMStorage.syncCardDataWithBoard(t, card.id, data);
+                });
+                return data;
             });
-            return data;
-        });
     },
 
     // Save T&M data for card
@@ -140,59 +164,76 @@ const TnMStorage = {
             });
     },
 
-    // Delete all Power-Up data from all cards
+// Delete all Power-Up data from all cards
     resetAllData: function(t) {
-        // Delete board settings
-        const resetBoardSettings = t.set('board', 'shared', 'tnm-settings', {
-            hourlyRate: 0,
-            currency: 'USD'
-        });
+        console.log('Starting complete data reset...');
 
-        // Get all cards on the board
+        // Get all cards on the board first
         return t.cards('all')
             .then(function(cards) {
-                // Create array of promises to delete data from each card
-                const resetPromises = [];
+                console.log('Found', cards.length, 'cards on board');
 
-                // For Trello API we need to use t.remove method to clear card data
-                cards.forEach(function(card) {
-                    // We can't directly delete data from a card by specifying only its ID
-                    // Instead we'll remember all card IDs and mark them for deletion
-                    // the next time they're opened
-                    resetPromises.push(
-                        t.set('board', 'shared', `tnm-card-reset-${card.id}`, true)
-                    );
+                // Create array of promises to delete data
+                const deletePromises = [];
 
-                    // Also delete data from board storage
-                    resetPromises.push(
-                        t.remove('board', 'shared', `tnm-card-data-${card.id}`)
-                    );
-                });
+                // Delete data from board storage for each known card
+                return TnMStorage.getKnownCardIds(t)
+                    .then(function(knownCardIds) {
+                        console.log('Known card IDs:', knownCardIds);
 
-                // Save list of all cards for cleaning
-                resetPromises.push(
-                    t.set('board', 'shared', 'tnm-cards-to-reset', cards.map(card => card.id))
-                );
+                        // Delete board-level data for each known card
+                        knownCardIds.forEach(function(cardId) {
+                            deletePromises.push(
+                                t.remove('board', 'shared', `tnm-card-data-${cardId}`)
+                                    .catch(function(err) {
+                                        console.warn('Failed to remove card data for', cardId, err);
+                                    })
+                            );
+                        });
 
-                // Clear list of known cards
-                resetPromises.push(
-                    t.set('board', 'shared', 'tnm-known-card-ids', [])
-                );
+                        // Also try to delete from all current cards (in case some aren't in known list)
+                        cards.forEach(function(card) {
+                            deletePromises.push(
+                                t.remove('board', 'shared', `tnm-card-data-${card.id}`)
+                                    .catch(function(err) {
+                                        console.warn('Failed to remove card data for', card.id, err);
+                                    })
+                            );
+                        });
 
-                // Set data reset flag
-                resetPromises.push(
-                    t.set('board', 'shared', 'tnm-data-reset-requested', true)
-                );
+                        // Clear the known cards list
+                        deletePromises.push(
+                            t.set('board', 'shared', 'tnm-known-card-ids', [])
+                        );
 
-                // Add promise for resetting board settings
-                resetPromises.push(resetBoardSettings);
+                        // Reset board settings
+                        deletePromises.push(
+                            t.set('board', 'shared', 'tnm-settings', {
+                                hourlyRate: 0,
+                                currency: 'USD'
+                            })
+                        );
 
-                // Wait for all promises to complete
-                return Promise.all(resetPromises);
+                        // Set global reset flag that will be checked when cards are opened
+                        deletePromises.push(
+                            t.set('board', 'shared', 'tnm-global-reset-timestamp', Date.now())
+                        );
+
+                        // Update cache version to force refresh
+                        deletePromises.push(
+                            t.set('board', 'shared', 'tnm-cache-version', Date.now())
+                        );
+
+                        return Promise.all(deletePromises);
+                    });
             })
             .then(function() {
-                // Update last update timestamp
-                return t.set('board', 'shared', 'tnm-cache-version', Date.now());
+                console.log('Board-level data reset completed');
+                return true;
+            })
+            .catch(function(error) {
+                console.error('Error during data reset:', error);
+                throw error;
             });
     },
 
