@@ -84,6 +84,17 @@
             margin-top: 10px;
             font-style: italic;
         }
+
+        .debug-info {
+            font-size: 11px;
+            color: #5E6C84;
+            margin-top: 10px;
+            text-align: left;
+            background-color: #F4F5F7;
+            padding: 8px;
+            border-radius: 3px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -125,12 +136,16 @@
         <div class="progress-status" id="progress-status">Processed 0 of 0 cards</div>
     </div>
 
+    <div class="debug-info" id="debug-info"></div>
+
     <p class="error-message" id="error-message"></p>
 </div>
 
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
+    let totalCards = 0;
+    let processedCards = 0;
 
     // Function to initialize date fields
     function initDateFields() {
@@ -179,13 +194,27 @@
         return (days * 8 * 60) + (hours * 60) + minutes;
     }
 
+    // Function to add debug info
+    function addDebugInfo(message) {
+        const debugDiv = document.getElementById('debug-info');
+        debugDiv.style.display = 'block';
+        debugDiv.innerHTML += message + '<br>';
+        console.log('Debug:', message);
+    }
+
     // Export data to CSV
     async function exportToCSV() {
         try {
+            // Clear previous debug info
+            document.getElementById('debug-info').innerHTML = '';
+            document.getElementById('debug-info').style.display = 'none';
+
             // Get filter parameters
             const startDateValue = document.getElementById('start-date').value;
             const endDateValue = document.getElementById('end-date').value;
             const includeEmpty = document.getElementById('include-empty').checked;
+
+            addDebugInfo(`Start date: ${startDateValue}, End date: ${endDateValue}, Include empty: ${includeEmpty}`);
 
             // Convert date strings to Date objects
             const startDate = new Date(startDateValue);
@@ -215,13 +244,18 @@
 
             // Initialize CSV content
             let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
+            let exportedRowsCount = 0;
 
             // Get list of all cards the user has worked with
             const knownCardIds = await TnMStorage.getKnownCardIds(t);
+            addDebugInfo(`Known card IDs: ${knownCardIds.length} (${knownCardIds.join(', ')})`);
+
             const allCards = await t.cards('all');
+            addDebugInfo(`All cards on board: ${allCards.length}`);
 
             // Filter only known cards
             const cards = allCards.filter(card => knownCardIds.includes(card.id));
+            addDebugInfo(`Cards with T&M data: ${cards.length}`);
 
             totalCards = cards.length;
             processedCards = 0;
@@ -229,23 +263,38 @@
             progressStatus.textContent = `Processed 0 of ${totalCards} cards`;
 
             // Process each card
-            for (const card of cards) {
+            for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
+                const card = cards[cardIndex];
+                addDebugInfo(`Processing card ${cardIndex + 1}/${cards.length}: ${card.name} (ID: ${card.id})`);
+
                 try {
                     // Get card data from board storage
                     const data = await TnMStorage.getCardDataFromBoard(t, card.id);
 
-                    if (data) {
+                    if (data && data.history) {
+                        addDebugInfo(`Card ${card.name} has ${data.history.length} history entries`);
+
                         // Filter entries by date (use work date if available, otherwise - actual date)
-                        const filteredHistory = data.history ? data.history.filter(entry => {
+                        const filteredHistory = data.history.filter(entry => {
+                            if (entry.type !== 'time') return false;
+
                             const dateToCheck = entry.workDate || entry.date;
-                            return entry.type === 'time' && isDateInRange(dateToCheck, startDate, endDate);
-                        }) : [];
+                            const inRange = isDateInRange(dateToCheck, startDate, endDate);
+
+                            if (!inRange) {
+                                addDebugInfo(`Entry excluded by date filter: ${dateToCheck}`);
+                            }
+
+                            return inRange;
+                        });
+
+                        addDebugInfo(`Card ${card.name}: ${filteredHistory.length} entries after date filtering`);
 
                         // If there are history entries or need to include empty cards
                         if (filteredHistory.length > 0 || includeEmpty) {
                             if (filteredHistory.length > 0) {
                                 // Add each entry to CSV
-                                filteredHistory.forEach(entry => {
+                                filteredHistory.forEach((entry, entryIndex) => {
                                     const dateStr = formatDateForDisplay(entry.workDate || entry.date);
                                     const cardName = card.name.replace(/"/g, '""'); // Escape quotes
                                     const userName = (entry.memberName || 'User').replace(/"/g, '""');
@@ -254,16 +303,34 @@
                                     const description = (entry.description || '').replace(/"/g, '""');
 
                                     csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
+                                    exportedRowsCount++;
+
+                                    addDebugInfo(`Added entry ${entryIndex + 1}: ${dateStr} - ${timeStr} (${userName})`);
                                 });
                             } else if (includeEmpty) {
                                 // Add empty entry for card
                                 const cardName = card.name.replace(/"/g, '""');
                                 csvContent += `"","${cardName}","","0m","0",""\n`;
+                                exportedRowsCount++;
+                                addDebugInfo(`Added empty entry for card: ${cardName}`);
                             }
+                        } else {
+                            addDebugInfo(`Card ${card.name} skipped - no matching entries and includeEmpty is false`);
+                        }
+                    } else {
+                        addDebugInfo(`Card ${card.name} has no data or no history`);
+
+                        if (includeEmpty) {
+                            // Add empty entry for card
+                            const cardName = card.name.replace(/"/g, '""');
+                            csvContent += `"","${cardName}","","0m","0",""\n`;
+                            exportedRowsCount++;
+                            addDebugInfo(`Added empty entry for card without data: ${cardName}`);
                         }
                     }
                 } catch (error) {
                     console.error(`Error processing card ${card.id}:`, error);
+                    addDebugInfo(`Error processing card ${card.name}: ${error.message}`);
                 }
 
                 // Update progress
@@ -272,6 +339,8 @@
                 progressBarFill.style.width = `${progressPercent}%`;
                 progressStatus.textContent = `Processed ${processedCards} of ${totalCards} cards`;
             }
+
+            addDebugInfo(`Export completed. Total rows exported: ${exportedRowsCount}`);
 
             // Create download link
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -297,6 +366,7 @@
         } catch (error) {
             console.error('Error exporting data:', error);
             showError('Error exporting data: ' + error.message);
+            addDebugInfo(`Export error: ${error.message}`);
         }
     }
 
