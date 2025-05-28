@@ -42,12 +42,12 @@ TrelloPowerUp.initialize({
     // Card menu button
     'card-buttons': function(t, options) {
         return [{
-            icon: 'https://trello-tnm-powerup.pages.dev/img/icon.png',
+            icon: './img/icon.png',
             text: 'T&M',
             callback: function(t) {
                 return t.popup({
                     title: 'Time Tracking',
-                    url: t.signUrl('https://trello-tnm-powerup.pages.dev/views/card-detail.html'),
+                    url: './views/card-detail.html',
                     height: 400
                 });
             }
@@ -96,7 +96,7 @@ TrelloPowerUp.initialize({
                     callback: function(t) {
                         return t.popup({
                             title: 'Time Tracking',
-                            url: t.signUrl('https://trello-tnm-powerup.pages.dev/views/card-detail.html'),
+                            url: './views/card-detail.html',
                             height: 400
                         });
                     }
@@ -110,7 +110,7 @@ TrelloPowerUp.initialize({
                     callback: function(t) {
                         return t.popup({
                             title: 'Time Tracking',
-                            url: t.signUrl('https://trello-tnm-powerup.pages.dev/views/card-detail.html'),
+                            url: './views/card-detail.html',
                             height: 400
                         });
                     }
@@ -121,10 +121,10 @@ TrelloPowerUp.initialize({
     'card-back-section': function(t, options) {
         return {
             title: 'Time Tracking',
-            icon: 'https://trello-tnm-powerup.pages.dev/img/icon.png',
+            icon: './img/icon.png',
             content: {
                 type: 'iframe',
-                url: t.signUrl('https://trello-tnm-powerup.pages.dev/views/card-back.html'),
+                url: t.signUrl('./views/card-back.html'),
                 height: 200
             }
         };
@@ -134,14 +134,14 @@ TrelloPowerUp.initialize({
         return [
             {
                 icon: {
-                    dark: 'https://trello-tnm-powerup.pages.dev/img/export-white.svg',
-                    light: 'https://trello-tnm-powerup.pages.dev/img/export-dark.svg'
+                    dark: './img/export-white.svg',
+                    light: './img/export-dark.svg'
                 },
                 text: 'Export T&M',
                 callback: function(t) {
                     return t.popup({
                         title: 'Export Time Data',
-                        url: t.signUrl(`https://trello-tnm-powerup.pages.dev/views/export-time.html?v=${Date.now()}`),
+                        url: './views/export-time.html',
                         height: 400
                     });
                 }
@@ -152,7 +152,7 @@ TrelloPowerUp.initialize({
     'show-settings': function(t, options) {
         return t.popup({
             title: 'T&M Settings',
-            url: t.signUrl('https://trello-tnm-powerup.pages.dev/views/settings.html'),
+            url: './views/settings.html',
             height: 300
         });
     }
