@@ -153,7 +153,7 @@
 
                 if (timeEntries.length > 0) {
                     // Sort by date (newest to oldest)
-                    timeEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    timeEntries.sort((a, b) => new Date(b.workDate) - new Date(a.workDate));
 
                     let entriesHTML = '';
 
