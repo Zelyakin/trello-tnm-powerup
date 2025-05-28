@@ -33,8 +33,9 @@ const TnMStorage = {
                     });
                 }
 
-                // After getting data, sync it with board storage
+                // ALWAYS sync data with board storage when card is accessed
                 t.card('id').then(function(card) {
+                    console.log(`Syncing card ${card.id} data to board storage`);
                     TnMStorage.syncCardDataWithBoard(t, card.id, data);
                 });
                 return data;
@@ -44,58 +45,58 @@ const TnMStorage = {
     // Save T&M data for card
     saveCardData: function(t, data) {
         return t.set('card', 'shared', 'tnm-data', data).then(function() {
+            console.log('Card data saved, syncing to board...');
             // After saving data, sync it with board storage
             return t.card('id').then(function(card) {
+                console.log(`Syncing saved data for card ${card.id}`);
                 return TnMStorage.syncCardDataWithBoard(t, card.id, data);
             });
         });
     },
 
-    // Sync card data with board storage
+    // Sync card data with board storage - улучшенная версия
     syncCardDataWithBoard: function(t, cardId, data) {
+        console.log(`Starting sync for card ${cardId}, data:`, data);
+
+        // Проверяем, что у нас есть данные для синхронизации
+        if (!data) {
+            console.log(`No data to sync for card ${cardId}`);
+            return Promise.resolve();
+        }
+
         // Save card data in special key at board level
         return t.set('board', 'shared', `tnm-card-data-${cardId}`, data)
             .then(function() {
+                console.log(`Successfully saved data to board storage for card ${cardId}`);
                 // Add card ID to list of known cards
                 return t.get('board', 'shared', 'tnm-known-card-ids', []);
             })
             .then(function(knownCardIds) {
                 if (!knownCardIds.includes(cardId)) {
                     knownCardIds.push(cardId);
+                    console.log(`Adding card ${cardId} to known cards list. Total known cards: ${knownCardIds.length}`);
                     return t.set('board', 'shared', 'tnm-known-card-ids', knownCardIds);
+                } else {
+                    console.log(`Card ${cardId} already in known cards list`);
                 }
                 return Promise.resolve();
+            })
+            .catch(function(error) {
+                console.error(`Error syncing card ${cardId} to board:`, error);
+                return Promise.resolve(); // Don't fail the main operation
             });
     },
 
-    // Get card data from board storage with fallback to card storage
+    // Get card data from board storage
     getCardDataFromBoard: function(t, cardId) {
-        // First try to get from board storage
         return t.get('board', 'shared', `tnm-card-data-${cardId}`, null)
-            .then(function(boardData) {
-                if (boardData && boardData.history && boardData.history.length > 0) {
-                    console.log(`Found data in board storage for card ${cardId}: ${boardData.history.length} entries`);
-                    return boardData;
+            .then(function(data) {
+                if (data && data.history) {
+                    console.log(`Found data in board storage for card ${cardId}: ${data.history.length} entries`);
+                } else {
+                    console.log(`No data in board storage for card ${cardId}`);
                 }
-
-                console.log(`No data in board storage for card ${cardId}, trying card storage...`);
-
-                // If no data in board storage, try to get from card storage
-                // This requires switching context to the specific card
-                return t.cards('all')
-                    .then(function(allCards) {
-                        const targetCard = allCards.find(card => card.id === cardId);
-                        if (!targetCard) {
-                            console.log(`Card ${cardId} not found on board`);
-                            return null;
-                        }
-
-                        // We can't directly access card storage from board context,
-                        // so we'll return the board storage data (even if empty)
-                        // and rely on the sync mechanism to update it
-                        console.log(`Card ${cardId} found, but no data in board storage`);
-                        return boardData;
-                    });
+                return data;
             })
             .catch(function(error) {
                 console.error(`Error getting data for card ${cardId}:`, error);
@@ -103,7 +104,35 @@ const TnMStorage = {
             });
     },
 
-    // New method: get all card data with comprehensive search
+    // Метод для принудительной синхронизации всех карточек
+    forceResyncAllCards: function(t) {
+        console.log('Starting forced resync of all cards...');
+
+        return t.get('board', 'shared', 'tnm-known-card-ids', [])
+            .then(function(knownCardIds) {
+                console.log(`Found ${knownCardIds.length} known card IDs for resync`);
+
+                if (knownCardIds.length === 0) {
+                    console.log('No known cards to resync');
+                    return Promise.resolve();
+                }
+
+                // Set flag that cards need to be resynced when opened
+                const resyncPromises = knownCardIds.map(function(cardId) {
+                    return t.set('board', 'shared', `tnm-resync-needed-${cardId}`, true)
+                        .then(function() {
+                            console.log(`Marked card ${cardId} for resync`);
+                        })
+                        .catch(function(error) {
+                            console.error(`Error marking card ${cardId} for resync:`, error);
+                        });
+                });
+
+                return Promise.all(resyncPromises);
+            });
+    },
+
+    // Improved method: get all card data with comprehensive search
     getAllCardDataForExport: function(t) {
         console.log('Starting comprehensive data search for export...');
 
@@ -124,14 +153,21 @@ const TnMStorage = {
                     const promise = t.get('board', 'shared', `tnm-card-data-${cardId}`, null)
                         .then(function(data) {
                             const card = allCards.find(c => c.id === cardId);
-                            if (card && data) {
-                                console.log(`Card ${card.name} (${cardId}): ${data.history ? data.history.length : 0} entries`);
-                                exportData.push({
-                                    card: card,
-                                    data: data
-                                });
-                            } else if (card) {
-                                console.log(`Card ${card.name} (${cardId}): no data found`);
+                            if (card) {
+                                if (data && data.history && data.history.length > 0) {
+                                    console.log(`Card ${card.name} (${cardId}): ${data.history.length} entries`);
+                                    exportData.push({
+                                        card: card,
+                                        data: data
+                                    });
+                                } else {
+                                    console.log(`Card ${card.name} (${cardId}): no data found in board storage`);
+                                    // Add card without data for potential empty export
+                                    exportData.push({
+                                        card: card,
+                                        data: null
+                                    });
+                                }
                             } else {
                                 console.log(`Card ID ${cardId}: card not found on board (possibly archived)`);
                             }
@@ -157,7 +193,7 @@ const TnMStorage = {
         return t.get('board', 'shared', 'tnm-known-card-ids', []);
     },
 
-    // Add time record
+    // Add time record - улучшенная версия с принудительной синхронизацией
     addTimeRecord: function(t, days, hours, minutes, description, workDate) {
         // Get info about current user
         return t.member('id', 'fullName', 'username')
@@ -198,7 +234,9 @@ const TnMStorage = {
                         if (!data.history) data.history = [];
                         data.history.push(newRecord);
 
-                        // Save updated data
+                        console.log(`Adding time record. Total history entries: ${data.history.length}`);
+
+                        // Save updated data with forced sync
                         return TnMStorage.saveCardData(t, data);
                     });
             });
@@ -238,7 +276,9 @@ const TnMStorage = {
                 // Remove record from history
                 data.history.splice(recordIndex, 1);
 
-                // Save updated data
+                console.log(`Deleted time record. Remaining history entries: ${data.history.length}`);
+
+                // Save updated data with forced sync
                 return TnMStorage.saveCardData(t, data);
             });
     },
