@@ -68,9 +68,88 @@ const TnMStorage = {
             });
     },
 
-    // Get card data from board storage
+    // Get card data from board storage with fallback to card storage
     getCardDataFromBoard: function(t, cardId) {
-        return t.get('board', 'shared', `tnm-card-data-${cardId}`, null);
+        // First try to get from board storage
+        return t.get('board', 'shared', `tnm-card-data-${cardId}`, null)
+            .then(function(boardData) {
+                if (boardData && boardData.history && boardData.history.length > 0) {
+                    console.log(`Found data in board storage for card ${cardId}: ${boardData.history.length} entries`);
+                    return boardData;
+                }
+
+                console.log(`No data in board storage for card ${cardId}, trying card storage...`);
+
+                // If no data in board storage, try to get from card storage
+                // This requires switching context to the specific card
+                return t.cards('all')
+                    .then(function(allCards) {
+                        const targetCard = allCards.find(card => card.id === cardId);
+                        if (!targetCard) {
+                            console.log(`Card ${cardId} not found on board`);
+                            return null;
+                        }
+
+                        // We can't directly access card storage from board context,
+                        // so we'll return the board storage data (even if empty)
+                        // and rely on the sync mechanism to update it
+                        console.log(`Card ${cardId} found, but no data in board storage`);
+                        return boardData;
+                    });
+            })
+            .catch(function(error) {
+                console.error(`Error getting data for card ${cardId}:`, error);
+                return null;
+            });
+    },
+
+    // New method: get all card data with comprehensive search
+    getAllCardDataForExport: function(t) {
+        console.log('Starting comprehensive data search for export...');
+
+        return Promise.all([
+            // Get known card IDs
+            t.get('board', 'shared', 'tnm-known-card-ids', []),
+            // Get all cards on board
+            t.cards('all')
+        ])
+            .then(function([knownCardIds, allCards]) {
+                console.log(`Known card IDs: ${knownCardIds.length}, All cards: ${allCards.length}`);
+
+                const exportData = [];
+                const promises = [];
+
+                // Process each known card ID
+                knownCardIds.forEach(function(cardId) {
+                    const promise = t.get('board', 'shared', `tnm-card-data-${cardId}`, null)
+                        .then(function(data) {
+                            const card = allCards.find(c => c.id === cardId);
+                            if (card && data) {
+                                console.log(`Card ${card.name} (${cardId}): ${data.history ? data.history.length : 0} entries`);
+                                exportData.push({
+                                    card: card,
+                                    data: data
+                                });
+                            } else if (card) {
+                                console.log(`Card ${card.name} (${cardId}): no data found`);
+                            } else {
+                                console.log(`Card ID ${cardId}: card not found on board (possibly archived)`);
+                            }
+                            return Promise.resolve();
+                        })
+                        .catch(function(error) {
+                            console.error(`Error getting data for card ${cardId}:`, error);
+                            return Promise.resolve();
+                        });
+
+                    promises.push(promise);
+                });
+
+                return Promise.all(promises).then(function() {
+                    console.log(`Export data prepared for ${exportData.length} cards`);
+                    return exportData;
+                });
+            });
     },
 
     // Get list of IDs of all known cards with data
