@@ -94,6 +94,7 @@
     </div>
 </div>
 
+<script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
@@ -153,7 +154,7 @@
 
                 if (timeEntries.length > 0) {
                     // Sort by date (newest to oldest)
-                    timeEntries.sort((a, b) => new Date(b.workDate) - new Date(a.workDate));
+                    timeEntries.sort((a, b) => new Date(b.workDate || b.date || b.created_at) - new Date(a.workDate || a.date || a.created_at));
 
                     let entriesHTML = '';
 
@@ -163,14 +164,14 @@
                     // Display each entry
                     displayEntries.forEach(function(entry) {
                         // Use work date if available
-                        const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date);
+                        const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date || entry.created_at);
 
                         entriesHTML += `
                 <div class="tnm-time-entry">
                   <div class="tnm-time-header">
                     <div>
                       <span class="tnm-time-date">${displayDate}</span>
-                      <span class="tnm-time-user">${entry.memberName || 'User'}</span>
+                      <span class="tnm-time-user">${entry.memberName || entry.member_name || 'User'}</span>
                     </div>
                     <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
                   </div>
