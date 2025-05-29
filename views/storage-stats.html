@@ -128,42 +128,6 @@
             border-top: 1px solid #DFE1E6;
         }
 
-        .debug-key-item {
-            padding: 8px;
-            margin-bottom: 4px;
-            background-color: #FAFBFC;
-            border: 1px solid #DFE1E6;
-            border-radius: 3px;
-            font-family: monospace;
-            font-size: 12px;
-        }
-
-        .debug-key-name {
-            font-weight: bold;
-            color: #172B4D;
-        }
-
-        .debug-key-type {
-            color: #5E6C84;
-            font-style: italic;
-        }
-
-        .debug-key-size {
-            color: #0079BF;
-            float: right;
-        }
-
-        .cleanup-btn-danger {
-            background-color: #CF513D;
-            color: white;
-            width: 100%;
-            margin-bottom: 8px;
-        }
-
-        .cleanup-btn-danger:hover {
-            background-color: #B04632;
-        }
-
         .cleanup-btn {
             background-color: #FFAB00;
             color: white;
@@ -173,6 +137,13 @@
 
         .cleanup-btn:hover {
             background-color: #FF9500;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #5E6C84;
+            margin-top: 8px;
+            font-style: italic;
         }
     </style>
 </head>
@@ -220,18 +191,11 @@
             <!-- Card statistics will be inserted here -->
         </div>
 
-        <h3>All Storage Keys Debug</h3>
-        <div id="debug-keys-list">
-            <!-- All found keys will be listed here -->
-        </div>
-
         <div class="cleanup-section">
             <h3>Storage Optimization</h3>
             <button id="optimize-btn" class="cleanup-btn">Optimize Storage</button>
-            <button id="deep-clean-btn" class="cleanup-btn-danger">Deep Clean All T&M Data</button>
             <div class="info-text">
-                Optimize: compress old data and remove redundant entries.<br>
-                Deep Clean: completely remove ALL T&M data from board storage (irreversible).
+                This will compress old data and remove redundant entries to free up space.
             </div>
         </div>
     </div>
@@ -291,7 +255,6 @@
             let totalSize = 0;
             let totalKeys = 0;
             const cardStats = [];
-            const allFoundKeys = [];
 
             // Check board-level data
             const boardKeys = [
@@ -308,7 +271,6 @@
                         const size = calculateDataSize(data);
                         totalSize += size;
                         totalKeys++;
-                        allFoundKeys.push({ key, size, type: 'board-system' });
                         console.log(`Board key ${key}: ${formatBytes(size)}`);
                     }
                 } catch (error) {
@@ -316,74 +278,35 @@
                 }
             }
 
-            // Deep scan: try to find ALL possible card data keys
-            console.log('Starting deep scan for all card data...');
-            const allPossibleCardIds = new Set([...knownCardIds, ...allCards.map(c => c.id)]);
-
-            for (const cardId of allPossibleCardIds) {
-                const cardDataKey = `tnm-card-data-${cardId}`;
-                try {
-                    const data = await t.get('board', 'shared', cardDataKey, null);
-                    if (data !== null) {
-                        const size = calculateDataSize(data);
-                        totalSize += size;
-                        totalKeys++;
-                        allFoundKeys.push({ key: cardDataKey, size, type: 'card-data', cardId });
-                        console.log(`Found card data key ${cardDataKey}: ${formatBytes(size)}`);
-                    }
-                } catch (error) {
-                    console.warn(`Error checking card data key ${cardDataKey}:`, error);
-                }
-            }
-
-            // Try to find any other tnm-* keys that might exist
-            console.log('Scanning for orphaned keys...');
-            const potentialKeys = [
-                'tnm-data-reset-requested',
-                'tnm-board-data',
-                'tnm-migration-done',
-                'tnm-version'
-            ];
-
-            for (const key of potentialKeys) {
-                try {
-                    const data = await t.get('board', 'shared', key, null);
-                    if (data !== null) {
-                        const size = calculateDataSize(data);
-                        totalSize += size;
-                        totalKeys++;
-                        allFoundKeys.push({ key, size, type: 'orphaned' });
-                        console.log(`Found orphaned key ${key}: ${formatBytes(size)}`);
-                    }
-                } catch (error) {
-                    // Ignore errors for non-existent keys
-                }
-            }
-
-            // Display all found keys in a new section
-            displayAllKeysDebug(allFoundKeys);
-
             // Check each known card
-            const cardPromises = allCards.map(async (card) => {
-                const cardData = allFoundKeys.find(k => k.cardId === card.id);
+            const cardPromises = knownCardIds.map(async (cardId) => {
+                try {
+                    const cardData = await TnMStorage.getCardDataFromBoard(t, cardId);
+                    const card = allCards.find(c => c.id === cardId);
 
-                if (cardData) {
-                    const data = await t.get('board', 'shared', cardData.key, null);
-                    if (data) {
+                    if (cardData) {
+                        const size = calculateDataSize(cardData);
+                        totalSize += size;
+                        totalKeys++;
+
                         const stat = {
-                            id: card.id,
-                            name: card.name,
-                            size: cardData.size,
-                            historyCount: data.history ? data.history.length : 0,
+                            id: cardId,
+                            name: card ? card.name : `Card ${cardId} (deleted?)`,
+                            size: size,
+                            historyCount: cardData.history ? cardData.history.length : 0,
                             totalTime: TnMStorage.formatTime(
-                                data.days || 0,
-                                data.hours || 0,
-                                data.minutes || 0
+                                cardData.days || 0,
+                                cardData.hours || 0,
+                                cardData.minutes || 0
                             ),
-                            exists: true
+                            exists: !!card
                         };
+
+                        console.log(`Card ${stat.name}: ${formatBytes(size)}, ${stat.historyCount} entries`);
                         return stat;
                     }
+                } catch (error) {
+                    console.warn(`Error getting data for card ${cardId}:`, error);
                 }
                 return null;
             });
@@ -458,75 +381,52 @@
         }
     }
 
-    function displayAllKeysDebug(allFoundKeys) {
-        const debugList = document.getElementById('debug-keys-list');
-        debugList.innerHTML = '';
+    async function optimizeStorage() {
+        try {
+            const btn = document.getElementById('optimize-btn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Optimizing...';
+            btn.disabled = true;
 
-        if (allFoundKeys.length === 0) {
-            debugList.innerHTML = '<div class="info-text">No T&M keys found</div>';
-            return;
-        }
+            // Get known card IDs
+            const knownCardIds = await t.get('board', 'shared', 'tnm-known-card-ids', []);
 
-        // Sort by size (largest first)
-        allFoundKeys.sort((a, b) => b.size - a.size);
+            let optimizedCount = 0;
 
-        allFoundKeys.forEach(keyInfo => {
-            const keyDiv = document.createElement('div');
-            keyDiv.className = 'debug-key-item';
+            for (const cardId of knownCardIds) {
+                try {
+                    const cardData = await TnMStorage.getCardDataFromBoard(t, cardId);
+                    if (cardData && cardData.history && cardData.history.length > TnMStorage.MAX_BOARD_ENTRIES) {
+                        // Keep only recent entries
+                        const optimizedData = {
+                            ...cardData,
+                            history: cardData.history.slice(-TnMStorage.MAX_BOARD_ENTRIES)
+                        };
 
-            keyDiv.innerHTML = `
-                <div class="debug-key-name">${keyInfo.key}</div>
-                <div class="debug-key-type">Type: ${keyInfo.type}</div>
-                <div class="debug-key-size">${formatBytes(keyInfo.size)}</div>
-            `;
-
-            debugList.appendChild(keyDiv);
-        });
-    }
-    try {
-        const btn = document.getElementById('optimize-btn');
-        const originalText = btn.textContent;
-        btn.textContent = 'Optimizing...';
-        btn.disabled = true;
-
-        // Get known card IDs
-        const knownCardIds = await t.get('board', 'shared', 'tnm-known-card-ids', []);
-
-        let optimizedCount = 0;
-
-        for (const cardId of knownCardIds) {
-            try {
-                const cardData = await TnMStorage.getCardDataFromBoard(t, cardId);
-                if (cardData && cardData.history && cardData.history.length > TnMStorage.MAX_BOARD_ENTRIES) {
-                    // Keep only recent entries
-                    const optimizedData = {
-                        ...cardData,
-                        history: cardData.history.slice(-TnMStorage.MAX_BOARD_ENTRIES)
-                    };
-
-                    await t.set('board', 'shared', `tnm-card-data-${cardId}`, optimizedData);
-                    optimizedCount++;
-                    console.log(`Optimized card ${cardId}: ${cardData.history.length} -> ${optimizedData.history.length} entries`);
+                        await t.set('board', 'shared', `tnm-card-data-${cardId}`, optimizedData);
+                        optimizedCount++;
+                        console.log(`Optimized card ${cardId}: ${cardData.history.length} -> ${optimizedData.history.length} entries`);
+                    }
+                } catch (error) {
+                    console.warn(`Error optimizing card ${cardId}:`, error);
                 }
-            } catch (error) {
-                console.warn(`Error optimizing card ${cardId}:`, error);
             }
+
+            btn.textContent = `Optimized ${optimizedCount} cards`;
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+                loadStorageStats(); // Refresh stats
+            }, 2000);
+
+        } catch (error) {
+            console.error('Error optimizing storage:', error);
+            document.getElementById('optimize-btn').textContent = 'Error optimizing';
+            setTimeout(() => {
+                document.getElementById('optimize-btn').textContent = 'Optimize Storage';
+                document.getElementById('optimize-btn').disabled = false;
+            }, 2000);
         }
-
-        btn.textContent = `Optimized ${optimizedCount} cards`;
-        setTimeout(() => {
-            btn.textContent = originalText;
-            btn.disabled = false;
-            loadStorageStats(); // Refresh stats
-        }, 2000);
-
-    } catch (error) {
-        console.error('Error optimizing storage:', error);
-        document.getElementById('optimize-btn').textContent = 'Error optimizing';
-        setTimeout(() => {
-            document.getElementById('optimize-btn').textContent = 'Optimize Storage';
-            document.getElementById('optimize-btn').disabled = false;
-        }, 2000);
     }
 
     // Event listeners
@@ -539,10 +439,6 @@
 
         document.getElementById('optimize-btn').addEventListener('click', function() {
             optimizeStorage();
-        });
-
-        document.getElementById('deep-clean-btn').addEventListener('click', function() {
-            deepCleanStorage();
         });
     });
 </script>
