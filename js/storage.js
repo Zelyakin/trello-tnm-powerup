@@ -4,46 +4,66 @@ const TnMStorage = {
     // Флаг для переключения между Trello Storage и Supabase
     USE_SUPABASE: true,
 
-    // Migrate single card data to Supabase
+// Migrate single card data to Supabase - ВЕРСИЯ С TIMESTAMP ID
     migrateCardToSupabase: function(t, boardId, cardId, oldData) {
         console.log('Starting card migration to Supabase...');
 
         if (!oldData) return Promise.resolve();
 
-        // Разворачиваем сжатые данные
         const expandedData = this.expandData(oldData);
         if (!expandedData || !expandedData.history) return Promise.resolve();
 
         const timeEntries = expandedData.history.filter(entry => entry.type === 'time');
         if (timeEntries.length === 0) return Promise.resolve();
 
-        console.log(`Migrating ${timeEntries.length} entries for card ${cardId}`);
+        console.log(`Attempting to migrate ${timeEntries.length} entries for card ${cardId}`);
 
-        // Миграция каждой записи
-        const migrationPromises = timeEntries.map(entry => {
-            return SupabaseAPI.addTimeEntry(boardId, cardId, {
-                days: entry.days || 0,
-                hours: entry.hours || 0,
-                minutes: entry.minutes || 0,
-                description: entry.description || '', // ПОЛНЫЕ описания!
-                workDate: entry.workDate || entry.date,
-                memberId: entry.memberId,
-                memberName: entry.memberName
-            }).catch(error => {
-                console.warn('Failed to migrate entry:', error);
-                return null; // Не прерываем миграцию из-за одной записи
-            });
-        });
+        let successCount = 0;
+        let skipCount = 0;
+        let errorCount = 0;
 
-        return Promise.all(migrationPromises)
-            .then(results => {
-                const successCount = results.filter(r => r !== null).length;
-                console.log(`Card migration completed: ${successCount}/${timeEntries.length} entries migrated`);
+        const migrateSequentially = async () => {
+            for (let i = 0; i < timeEntries.length; i++) {
+                const entry = timeEntries[i];
+                try {
+                    const result = await SupabaseAPI.addTimeEntry(boardId, cardId, {
+                        days: entry.days || 0,
+                        hours: entry.hours || 0,
+                        minutes: entry.minutes || 0,
+                        description: entry.description || '',
+                        workDate: entry.workDate || entry.date,
+                        memberId: entry.memberId,
+                        memberName: entry.memberName,
+                        timestampId: entry.id // ПЕРЕДАЕМ TIMESTAMP ID!
+                    });
 
-                // Помечаем карточку как мигрированную
-                return t.set('card', 'shared', 'tnm-migrated-to-supabase', true);
+                    if (result === null) {
+                        skipCount++;
+                        console.log(`Entry ${i + 1}/${timeEntries.length} skipped (duplicate timestamp: ${entry.id})`);
+                    } else {
+                        successCount++;
+                        console.log(`Entry ${i + 1}/${timeEntries.length} migrated successfully (timestamp: ${entry.id})`);
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.warn(`Entry ${i + 1}/${timeEntries.length} failed (timestamp: ${entry.id}):`, error.message);
+                }
+            }
+
+            return { successCount, skipCount, errorCount };
+        };
+
+        return migrateSequentially()
+            .then(({ successCount, skipCount, errorCount }) => {
+                console.log(`Migration completed: ${successCount} new, ${skipCount} skipped, ${errorCount} errors`);
+
+                return t.set('card', 'shared', 'tnm-migrated-to-supabase', true)
+                    .then(() => {
+                        return { successCount, skipCount, errorCount };
+                    });
             });
     },
+
 
 // Get T&M data for card - ВЕРСИЯ С ПРИНУДИТЕЛЬНОЙ ПРОВЕРКОЙ
     getCardData: function(t) {
@@ -179,7 +199,7 @@ const TnMStorage = {
         return t.set('card', 'shared', 'tnm-data', compressedData);
     },
 
-    // Add time record
+    // Add time record - ВЕРСИЯ С TIMESTAMP ID
     addTimeRecord: function(t, days, hours, minutes, description, workDate, memberId, memberName) {
         if (this.USE_SUPABASE) {
             return Promise.all([
@@ -193,7 +213,8 @@ const TnMStorage = {
                     description: description || '',
                     workDate: workDate || new Date().toISOString(),
                     memberId: memberId,
-                    memberName: memberName
+                    memberName: memberName,
+                    timestampId: Date.now() // ГЕНЕРИРУЕМ TIMESTAMP ID ДЛЯ НОВЫХ ЗАПИСЕЙ
                 };
 
                 return SupabaseAPI.addTimeEntry(board.id, card.id, entry);

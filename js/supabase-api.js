@@ -1,10 +1,10 @@
 // js/supabase-api.js
 const SupabaseAPI = {
-// Замени на свои данные из Supabase проекта
-    SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwemJ2ZHl4bXpxd2VvZ2h0Z3pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTYyNTksImV4cCI6MjA2NDA5MjI1OX0.v61HycgpmbSxjXUkXzD6LGX5rcOmXgJv2n7EFx7Naxs',
+    // Замени на свои данные из Supabase проекта
+    SUPABASE_URL: 'https://your-project-id.supabase.co',
+    SUPABASE_ANON_KEY: 'your-anon-key',
 
-    // Базовый HTTP клиент
+    // Базовый HTTP клиент остается без изменений
     async request(endpoint, options = {}) {
         const url = `${this.SUPABASE_URL}/rest/v1/${endpoint}`;
         const config = {
@@ -28,17 +28,14 @@ const SupabaseAPI = {
         return response.json();
     },
 
-    // Получить или создать доску
     async ensureBoard(trelloBoardId) {
         try {
-            // Попытаться найти существующую доску
             const boards = await this.request(`boards?trello_board_id=eq.${trelloBoardId}`);
 
             if (boards.length > 0) {
                 return boards[0];
             }
 
-            // Создать новую доску
             const newBoards = await this.request('boards', {
                 method: 'POST',
                 body: JSON.stringify({
@@ -53,17 +50,14 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить или создать карточку - ИСПРАВЛЕННАЯ ВЕРСИЯ
     async ensureCard(boardId, trelloCardId) {
         try {
-            // Попытаться найти существующую карточку
             const cards = await this.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${boardId}`);
 
             if (cards.length > 0) {
                 return cards[0];
             }
 
-            // Создать новую карточку с обработкой дубликатов
             try {
                 const newCards = await this.request('cards', {
                     method: 'POST',
@@ -78,7 +72,6 @@ const SupabaseAPI = {
 
                 return newCards[0];
             } catch (createError) {
-                // Если ошибка дубликата - попытаться найти карточку снова
                 if (createError.message.includes('duplicate key') || createError.message.includes('23505')) {
                     console.log('Card already exists, fetching...');
                     const existingCards = await this.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${boardId}`);
@@ -96,34 +89,50 @@ const SupabaseAPI = {
         }
     },
 
-    // Добавить запись времени - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Добавить запись времени - ВЕРСИЯ С TIMESTAMP ID
     async addTimeEntry(boardId, trelloCardId, entry) {
         try {
             console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
 
-            // Убедиться что доска существует
             const board = await this.ensureBoard(boardId);
-
-            // Убедиться что карточка существует (с защитой от дубликатов)
             const card = await this.ensureCard(board.id, trelloCardId);
 
-            // Проверить, не существует ли уже такая запись (защита от дублирования при миграции)
             const workDate = entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0];
+
+            // Если есть исходный timestamp ID - проверить, не существует ли уже
+            if (entry.timestampId) {
+                const existingEntries = await this.request(`time_entries?trello_entry_id=eq.${entry.timestampId}`);
+
+                if (existingEntries.length > 0) {
+                    console.log(`Entry with timestamp ID ${entry.timestampId} already exists, skipping...`);
+                    return null;
+                }
+            }
+
+            // Подготовить данные для вставки
+            const entryData = {
+                card_id: card.id,
+                trello_member_id: entry.memberId,
+                member_name: entry.memberName,
+                days: entry.days || 0,
+                hours: entry.hours || 0,
+                minutes: entry.minutes || 0,
+                description: entry.description || '',
+                work_date: workDate
+            };
+
+            // Добавить timestamp ID если есть
+            if (entry.timestampId) {
+                entryData.trello_entry_id = entry.timestampId;
+            }
 
             // Добавить запись времени
             const timeEntry = await this.request('time_entries', {
                 method: 'POST',
-                body: JSON.stringify({
-                    card_id: card.id,
-                    trello_member_id: entry.memberId,
-                    member_name: entry.memberName,
-                    days: entry.days || 0,
-                    hours: entry.hours || 0,
-                    minutes: entry.minutes || 0,
-                    description: entry.description || '',
-                    work_date: workDate
-                })
+                body: JSON.stringify(entryData)
             });
+
+            console.log('New entry added successfully');
 
             // Обновить общее время карточки
             await this.updateCardTotalTime(card.id);
@@ -132,9 +141,11 @@ const SupabaseAPI = {
         } catch (error) {
             console.error('Error adding time entry:', error);
 
-            // Если это ошибка дубликата и мы в процессе миграции, просто пропускаем
-            if (error.message.includes('duplicate key') || error.message.includes('23505')) {
-                console.log('Entry already exists, skipping...');
+            // Если это ошибка дубликата по timestamp ID - просто пропускаем
+            if (error.message.includes('duplicate key') ||
+                error.message.includes('23505') ||
+                error.message.includes('idx_time_entries_trello_id')) {
+                console.log('Duplicate timestamp ID detected, skipping...');
                 return null;
             }
 
@@ -142,13 +153,11 @@ const SupabaseAPI = {
         }
     },
 
-    // Обновить общее время карточки
+    // Остальные функции остаются без изменений
     async updateCardTotalTime(cardId) {
         try {
-            // Получить все записи времени для карточки
             const entries = await this.request(`time_entries?card_id=eq.${cardId}`);
 
-            // Посчитать общее время
             let totalDays = 0;
             let totalHours = 0;
             let totalMinutes = 0;
@@ -159,7 +168,6 @@ const SupabaseAPI = {
                 totalMinutes += entry.minutes || 0;
             });
 
-            // Нормализовать время
             while (totalMinutes >= 60) {
                 totalMinutes -= 60;
                 totalHours += 1;
@@ -170,7 +178,6 @@ const SupabaseAPI = {
                 totalDays += 1;
             }
 
-            // Обновить карточку
             await this.request(`cards?id=eq.${cardId}`, {
                 method: 'PATCH',
                 body: JSON.stringify({
@@ -188,33 +195,26 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить данные карточки
     async getCardData(boardId, trelloCardId) {
         try {
             console.log('Getting card data from Supabase:', { boardId, trelloCardId });
 
-            // Найти доску
             const boards = await this.request(`boards?trello_board_id=eq.${boardId}`);
             if (boards.length === 0) {
                 return { days: 0, hours: 0, minutes: 0, history: [] };
             }
 
             const board = boards[0];
-
-            // Найти карточку
             const cards = await this.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
             if (cards.length === 0) {
                 return { days: 0, hours: 0, minutes: 0, history: [] };
             }
 
             const card = cards[0];
-
-            // Получить записи времени
             const timeEntries = await this.request(`time_entries?card_id=eq.${card.id}&order=created_at.desc`);
 
-            // Преобразовать в формат, ожидаемый Power-Up
             const history = timeEntries.map(entry => ({
-                id: entry.created_at, // Используем timestamp как ID
+                id: entry.created_at, // Используем timestamp как ID для совместимости
                 type: 'time',
                 days: entry.days,
                 hours: entry.hours,
@@ -223,7 +223,8 @@ const SupabaseAPI = {
                 date: entry.created_at,
                 workDate: entry.work_date + 'T00:00:00.000Z',
                 memberId: entry.trello_member_id,
-                memberName: entry.member_name
+                memberName: entry.member_name,
+                timestampId: entry.trello_entry_id // Добавляем исходный timestamp
             }));
 
             return {
@@ -234,17 +235,14 @@ const SupabaseAPI = {
             };
         } catch (error) {
             console.error('Error getting card data:', error);
-            // Возвращаем пустые данные в случае ошибки
             return { days: 0, hours: 0, minutes: 0, history: [] };
         }
     },
 
-    // Удалить запись времени
     async deleteTimeEntry(boardId, trelloCardId, entryTimestamp) {
         try {
             console.log('Deleting time entry from Supabase:', { boardId, trelloCardId, entryTimestamp });
 
-            // Найти доску и карточку
             const boards = await this.request(`boards?trello_board_id=eq.${boardId}`);
             if (boards.length === 0) throw new Error('Board not found');
 
@@ -269,26 +267,21 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить все данные для экспорта
     async getAllDataForExport(boardId, startDate, endDate) {
         try {
             console.log('Getting all data for export from Supabase:', { boardId, startDate, endDate });
 
-            // Найти доску
             const boards = await this.request(`boards?trello_board_id=eq.${boardId}`);
             if (boards.length === 0) {
                 return [];
             }
 
             const board = boards[0];
-
-            // Получить все карточки доски
             const cards = await this.request(`cards?board_id=eq.${board.id}`);
 
             const exportData = [];
 
             for (const card of cards) {
-                // Получить записи времени с фильтрацией по датам
                 let timeEntriesQuery = `time_entries?card_id=eq.${card.id}`;
 
                 if (startDate) {
