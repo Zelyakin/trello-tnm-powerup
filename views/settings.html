@@ -53,14 +53,6 @@
       background-color: #B04632;
     }
 
-    .mod-warning {
-      background-color: #FFAB00;
-    }
-
-    .mod-warning:hover {
-      background-color: #FF9500;
-    }
-
     #status-message {
       margin-top: 16px;
       color: #0079BF;
@@ -97,17 +89,17 @@
       font-style: italic;
     }
 
-    .migration-notice {
-      background-color: #FFF2CC;
-      border: 1px solid #FFAB00;
+    .supabase-info {
+      background-color: #E3FCEF;
+      border: 1px solid #61BD4F;
       border-radius: 3px;
       padding: 12px;
       margin-bottom: 20px;
     }
 
-    .migration-notice h3 {
+    .supabase-info h3 {
       margin-top: 0;
-      color: #FF8B00;
+      color: #61BD4F;
     }
 
     /* Styles for confirmation dialog */
@@ -168,17 +160,13 @@
 <div>
   <h2>T&M Power-Up Settings</h2>
 
-  <!-- Migration Notice -->
-  <div class="migration-notice">
-    <h3>🚀 Supabase Migration Available</h3>
-    <p>Migrate your time tracking data to Supabase for better performance and unlimited storage.</p>
+  <!-- Supabase Status Info -->
+  <div class="supabase-info">
+    <h3>✅ Supabase Integration Active</h3>
+    <p>Time tracking data is automatically stored in Supabase. Data migration happens automatically when you open cards.</p>
   </div>
 
   <p>Manage Power-Up cache and data:</p>
-
-  <div class="button-container">
-    <button id="migration-btn" class="mod-warning">Migrate to Supabase</button>
-  </div>
 
   <div class="button-container">
     <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
@@ -196,7 +184,7 @@
     <button id="reset-all-data-btn" class="mod-danger">Delete All Data</button>
   </div>
   <p class="warning-text">WARNING! This action is irreversible and will delete all time tracking data from all cards on the board.</p>
-  <p class="info-text">Note: Data from individual cards will be cleared when they are next opened.</p>
+  <p class="info-text">Note: This will reset both Supabase and local data.</p>
 
   <p id="status-message">Cache cleared. Reloading...</p>
   <p id="error-message"></p>
@@ -205,9 +193,9 @@
 <!-- Complete reset confirmation dialog -->
 <div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
   <div class="confirmation-content">
-    <div class="confirmation-title">T&M Power-Up Update</div>
+    <div class="confirmation-title">T&M Power-Up Reset</div>
     <p class="confirmation-text">Are you sure you want to delete ALL time tracking data from ALL cards on the board?</p>
-    <p class="confirmation-text">This action cannot be undone!</p>
+    <p class="confirmation-text">This will affect both Supabase and local data. This action cannot be undone!</p>
     <div class="confirmation-buttons">
       <button class="cancel-btn" id="cancel-reset">Cancel</button>
       <button class="mod-danger" id="confirm-reset">Delete</button>
@@ -218,15 +206,6 @@
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
-
-  // Handler for migration button
-  document.getElementById('migration-btn').addEventListener('click', function() {
-    t.popup({
-      title: 'Migration to Supabase',
-      url: t.signUrl('./migration.html'),
-      height: 700
-    });
-  });
 
   // Handler for storage statistics button
   document.getElementById('storage-stats-btn').addEventListener('click', function() {
@@ -275,12 +254,13 @@
 
     // Show status message
     document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').textContent = 'Deleting data...';
+    document.getElementById('status-message').textContent = 'Deleting all data...';
 
-    // Delete all data
+    // TODO: Добавить функцию для удаления данных из Supabase
+    // Пока что удаляем только локальные данные
     TnMStorage.resetAllData(t)
             .then(function() {
-              document.getElementById('status-message').textContent = 'Board-level data deleted. Individual cards will be cleared when opened. Reloading...';
+              document.getElementById('status-message').textContent = 'Local data deleted. Note: Supabase data cleanup should be done manually. Reloading...';
 
               // Close window and reload page after 3 seconds
               setTimeout(function() {
