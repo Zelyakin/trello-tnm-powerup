@@ -1,6 +1,12 @@
 /* Utilities for working with Trello storage */
 
 const TnMStorage = {
+    // Maximum entries to keep in card storage (to fit in 4096 limit)
+    MAX_CARD_ENTRIES: 20,
+
+    // Maximum entries to keep in board storage (to fit in 8192 limit)
+    MAX_BOARD_ENTRIES: 150,
+
 // Get T&M data for card
     getCardData: function(t) {
         return Promise.all([
@@ -33,6 +39,9 @@ const TnMStorage = {
                     });
                 }
 
+                // Expand compressed data if needed
+                data = TnMStorage.expandData(data);
+
                 // ALWAYS sync data with board storage when card is accessed
                 t.card('id').then(function(card) {
                     console.log(`Syncing card ${card.id} data to board storage`);
@@ -42,35 +51,152 @@ const TnMStorage = {
             });
     },
 
-    // Save T&M data for card
+    // Compress data to save maximum space
+    compressData: function(data) {
+        if (!data || !data.history) return data;
+
+        const compressed = {
+            d: data.days || 0,  // days -> d
+            h: data.hours || 0, // hours -> h
+            m: data.minutes || 0, // minutes -> m
+            // Compress history with ultra-short field names
+            hist: data.history.map(function(entry) {
+                return [
+                    entry.id,
+                    entry.days || 0,
+                    entry.hours || 0,
+                    entry.minutes || 0,
+                    entry.description || '',
+                    entry.workDate || entry.date,
+                    entry.memberId,
+                    entry.memberName || ''
+                ];
+            })
+        };
+
+        return compressed;
+    },
+
+    // Expand compressed data
+    expandData: function(data) {
+        if (!data) return data;
+
+        // Check if data is already expanded
+        if (data.history !== undefined) {
+            return data; // Already expanded
+        }
+
+        // Check if data is compressed (has 'hist' instead of 'history')
+        if (!data.hist) {
+            return data; // No history data
+        }
+
+        const expanded = {
+            days: data.d || 0,
+            hours: data.h || 0,
+            minutes: data.m || 0,
+            history: data.hist.map(function(entry) {
+                return {
+                    id: entry[0],
+                    type: 'time',
+                    days: entry[1],
+                    hours: entry[2],
+                    minutes: entry[3],
+                    description: entry[4],
+                    date: entry[5], // Use the same date for both
+                    workDate: entry[5],
+                    memberId: entry[6],
+                    memberName: entry[7]
+                };
+            })
+        };
+
+        return expanded;
+    },
+
+    // Save T&M data for card with aggressive compression and limits
     saveCardData: function(t, data) {
-        return t.set('card', 'shared', 'tnm-data', data).then(function() {
-            console.log('Card data saved, syncing to board...');
-            // After saving data, sync it with board storage
+        // Limit history size for card storage
+        const limitedData = {
+            days: data.days,
+            hours: data.hours,
+            minutes: data.minutes,
+            history: data.history.slice(-TnMStorage.MAX_CARD_ENTRIES) // Keep only last N entries
+        };
+
+        // Compress data before saving
+        const compressedData = TnMStorage.compressData(limitedData);
+
+        const dataSize = JSON.stringify(compressedData).length;
+        console.log(`Saving card data: ${limitedData.history.length} entries, ${dataSize} chars`);
+
+        if (dataSize > 4000) { // Leave some margin
+            console.warn(`Card data still too large (${dataSize} chars), reducing further...`);
+            // Keep even fewer entries
+            limitedData.history = data.history.slice(-10);
+            const recompressed = TnMStorage.compressData(limitedData);
+
+            return t.set('card', 'shared', 'tnm-data', recompressed).then(function() {
+                console.log(`Saved reduced card data: ${limitedData.history.length} entries`);
+                // Sync full data to board storage
+                return t.card('id').then(function(card) {
+                    return TnMStorage.syncCardDataWithBoard(t, card.id, data);
+                });
+            });
+        }
+
+        return t.set('card', 'shared', 'tnm-data', compressedData).then(function() {
+            console.log('Card data saved successfully');
+            // Sync full data to board storage
             return t.card('id').then(function(card) {
-                console.log(`Syncing saved data for card ${card.id}`);
                 return TnMStorage.syncCardDataWithBoard(t, card.id, data);
             });
+        }).catch(function(error) {
+            console.error('Error saving card data:', error);
+            throw error;
         });
     },
 
-    // Sync card data with board storage - улучшенная версия
+    // Sync card data with board storage with size limits
     syncCardDataWithBoard: function(t, cardId, data) {
-        console.log(`Starting sync for card ${cardId}, data:`, data);
+        console.log(`Starting sync for card ${cardId}`);
 
-        // Проверяем, что у нас есть данные для синхронизации
         if (!data) {
             console.log(`No data to sync for card ${cardId}`);
             return Promise.resolve();
         }
 
-        // Save card data in special key at board level
-        return t.set('board', 'shared', `tnm-card-data-${cardId}`, data)
+        // For board storage, keep more entries but still limit
+        const boardData = {
+            days: data.days,
+            hours: data.hours,
+            minutes: data.minutes,
+            history: data.history.slice(-TnMStorage.MAX_BOARD_ENTRIES) // Keep last 50 entries
+        };
+
+        // Don't compress for board storage since we have more space
+        const dataSize = JSON.stringify(boardData).length;
+        console.log(`Board sync data size: ${dataSize} chars for ${boardData.history.length} entries`);
+
+        if (dataSize > 8000) { // Leave margin for 8192 limit
+            console.warn('Board data too large, reducing entries...');
+            boardData.history = data.history.slice(-30); // Further reduce
+        }
+
+        return t.set('board', 'shared', `tnm-card-data-${cardId}`, boardData)
             .then(function() {
-                console.log(`Successfully saved data to board storage for card ${cardId}`);
-                // Add card ID to list of known cards
-                return t.get('board', 'shared', 'tnm-known-card-ids', []);
+                console.log(`Successfully synced ${boardData.history.length} entries to board storage for card ${cardId}`);
+                return TnMStorage.updateKnownCardsList(t, cardId);
             })
+            .catch(function(error) {
+                console.error(`Error syncing card ${cardId} to board:`, error);
+                return Promise.resolve(); // Don't fail the main operation
+            });
+    },
+
+    // Helper function to update known cards list
+    updateKnownCardsList: function(t, cardId) {
+        return t.get('board', 'shared', 'tnm-known-card-ids', [])
             .then(function(knownCardIds) {
                 if (!knownCardIds.includes(cardId)) {
                     knownCardIds.push(cardId);
@@ -80,10 +206,6 @@ const TnMStorage = {
                     console.log(`Card ${cardId} already in known cards list`);
                 }
                 return Promise.resolve();
-            })
-            .catch(function(error) {
-                console.error(`Error syncing card ${cardId} to board:`, error);
-                return Promise.resolve(); // Don't fail the main operation
             });
     },
 
@@ -104,42 +226,12 @@ const TnMStorage = {
             });
     },
 
-    // Метод для принудительной синхронизации всех карточек
-    forceResyncAllCards: function(t) {
-        console.log('Starting forced resync of all cards...');
-
-        return t.get('board', 'shared', 'tnm-known-card-ids', [])
-            .then(function(knownCardIds) {
-                console.log(`Found ${knownCardIds.length} known card IDs for resync`);
-
-                if (knownCardIds.length === 0) {
-                    console.log('No known cards to resync');
-                    return Promise.resolve();
-                }
-
-                // Set flag that cards need to be resynced when opened
-                const resyncPromises = knownCardIds.map(function(cardId) {
-                    return t.set('board', 'shared', `tnm-resync-needed-${cardId}`, true)
-                        .then(function() {
-                            console.log(`Marked card ${cardId} for resync`);
-                        })
-                        .catch(function(error) {
-                            console.error(`Error marking card ${cardId} for resync:`, error);
-                        });
-                });
-
-                return Promise.all(resyncPromises);
-            });
-    },
-
-    // Improved method: get all card data with comprehensive search
+    // Get all card data for export
     getAllCardDataForExport: function(t) {
         console.log('Starting comprehensive data search for export...');
 
         return Promise.all([
-            // Get known card IDs
             t.get('board', 'shared', 'tnm-known-card-ids', []),
-            // Get all cards on board
             t.cards('all')
         ])
             .then(function([knownCardIds, allCards]) {
@@ -148,9 +240,8 @@ const TnMStorage = {
                 const exportData = [];
                 const promises = [];
 
-                // Process each known card ID
                 knownCardIds.forEach(function(cardId) {
-                    const promise = t.get('board', 'shared', `tnm-card-data-${cardId}`, null)
+                    const promise = TnMStorage.getCardDataFromBoard(t, cardId)
                         .then(function(data) {
                             const card = allCards.find(c => c.id === cardId);
                             if (card) {
@@ -161,20 +252,15 @@ const TnMStorage = {
                                         data: data
                                     });
                                 } else {
-                                    console.log(`Card ${card.name} (${cardId}): no data found in board storage`);
-                                    // Add card without data for potential empty export
+                                    console.log(`Card ${card.name} (${cardId}): no data found`);
                                     exportData.push({
                                         card: card,
                                         data: null
                                     });
                                 }
                             } else {
-                                console.log(`Card ID ${cardId}: card not found on board (possibly archived)`);
+                                console.log(`Card ID ${cardId}: card not found on board`);
                             }
-                            return Promise.resolve();
-                        })
-                        .catch(function(error) {
-                            console.error(`Error getting data for card ${cardId}:`, error);
                             return Promise.resolve();
                         });
 
@@ -193,14 +279,12 @@ const TnMStorage = {
         return t.get('board', 'shared', 'tnm-known-card-ids', []);
     },
 
-    // Add time record - улучшенная версия с принудительной синхронизацией
+    // Add time record
     addTimeRecord: function(t, days, hours, minutes, description, workDate) {
-        // Get info about current user
         return t.member('id', 'fullName', 'username')
             .then(function(member) {
                 return TnMStorage.getCardData(t)
                     .then(function(data) {
-                        // Create new record with user info
                         const newRecord = {
                             id: Date.now(),
                             type: 'time',
@@ -208,8 +292,8 @@ const TnMStorage = {
                             hours: parseInt(hours) || 0,
                             minutes: parseInt(minutes) || 0,
                             description: description,
-                            date: new Date().toISOString(), // Actual add date
-                            workDate: workDate ? new Date(workDate).toISOString() : null, // Work date
+                            date: new Date().toISOString(),
+                            workDate: workDate ? new Date(workDate).toISOString() : null,
                             memberId: member.id,
                             memberName: member.fullName || member.username
                         };
@@ -219,7 +303,7 @@ const TnMStorage = {
                         data.hours = (parseInt(data.hours) || 0) + parseInt(hours || 0);
                         data.minutes = (parseInt(data.minutes) || 0) + parseInt(minutes || 0);
 
-                        // Normalize values (60 minutes = 1 hour, 8 hours = 1 day)
+                        // Normalize values
                         while (data.minutes >= 60) {
                             data.minutes -= 60;
                             data.hours += 1;
@@ -236,7 +320,6 @@ const TnMStorage = {
 
                         console.log(`Adding time record. Total history entries: ${data.history.length}`);
 
-                        // Save updated data with forced sync
                         return TnMStorage.saveCardData(t, data);
                     });
             });
@@ -246,14 +329,12 @@ const TnMStorage = {
     deleteTimeRecord: function(t, recordId) {
         return TnMStorage.getCardData(t)
             .then(function(data) {
-                // Find record to delete
                 const recordIndex = data.history.findIndex(record => record.id === recordId);
 
                 if (recordIndex === -1) {
                     throw new Error('Record not found');
                 }
 
-                // Get record before deletion
                 const record = data.history[recordIndex];
 
                 // Subtract time from total time
@@ -261,8 +342,7 @@ const TnMStorage = {
                 data.hours = Math.max(0, (parseInt(data.hours) || 0) - (parseInt(record.hours) || 0));
                 data.minutes = Math.max(0, (parseInt(data.minutes) || 0) - (parseInt(record.minutes) || 0));
 
-                // Normalize values in case of negative minutes or hours
-                // (can happen when deleting a record if there were rounding)
+                // Normalize values
                 while (data.minutes < 0) {
                     data.minutes += 60;
                     data.hours -= 1;
@@ -273,34 +353,28 @@ const TnMStorage = {
                     data.days -= 1;
                 }
 
-                // Remove record from history
                 data.history.splice(recordIndex, 1);
 
                 console.log(`Deleted time record. Remaining history entries: ${data.history.length}`);
 
-                // Save updated data with forced sync
                 return TnMStorage.saveCardData(t, data);
             });
     },
 
-// Delete all Power-Up data from all cards
+    // Delete all Power-Up data from all cards
     resetAllData: function(t) {
         console.log('Starting complete data reset...');
 
-        // Get all cards on the board first
         return t.cards('all')
             .then(function(cards) {
                 console.log('Found', cards.length, 'cards on board');
 
-                // Create array of promises to delete data
                 const deletePromises = [];
 
-                // Delete data from board storage for each known card
                 return TnMStorage.getKnownCardIds(t)
                     .then(function(knownCardIds) {
                         console.log('Known card IDs:', knownCardIds);
 
-                        // Delete board-level data for each known card
                         knownCardIds.forEach(function(cardId) {
                             deletePromises.push(
                                 t.remove('board', 'shared', `tnm-card-data-${cardId}`)
@@ -310,7 +384,6 @@ const TnMStorage = {
                             );
                         });
 
-                        // Also try to delete from all current cards (in case some aren't in known list)
                         cards.forEach(function(card) {
                             deletePromises.push(
                                 t.remove('board', 'shared', `tnm-card-data-${card.id}`)
@@ -320,12 +393,10 @@ const TnMStorage = {
                             );
                         });
 
-                        // Clear the known cards list
                         deletePromises.push(
                             t.set('board', 'shared', 'tnm-known-card-ids', [])
                         );
 
-                        // Reset board settings
                         deletePromises.push(
                             t.set('board', 'shared', 'tnm-settings', {
                                 hourlyRate: 0,
@@ -333,12 +404,10 @@ const TnMStorage = {
                             })
                         );
 
-                        // Set global reset flag that will be checked when cards are opened
                         deletePromises.push(
                             t.set('board', 'shared', 'tnm-global-reset-timestamp', Date.now())
                         );
 
-                        // Update cache version to force refresh
                         deletePromises.push(
                             t.set('board', 'shared', 'tnm-cache-version', Date.now())
                         );
@@ -356,7 +425,7 @@ const TnMStorage = {
             });
     },
 
-    // New function: check and clear card data on opening
+    // Check and clear card data on opening
     checkAndClearCardData: function(t) {
         return Promise.all([
             t.card('id'),
@@ -364,14 +433,11 @@ const TnMStorage = {
         ])
             .then(function([card, resetRequested]) {
                 if (resetRequested) {
-                    // Check if data needs to be cleared for this card
                     return t.get('board', 'shared', `tnm-card-reset-${card.id}`, false)
                         .then(function(needsReset) {
                             if (needsReset) {
-                                // Clear card data
                                 return t.set('card', 'shared', 'tnm-data', null)
                                     .then(function() {
-                                        // Remove reset flag for this card
                                         return t.remove('board', 'shared', `tnm-card-reset-${card.id}`);
                                     });
                             }
@@ -395,7 +461,7 @@ const TnMStorage = {
         return t.set('board', 'shared', 'tnm-settings', settings);
     },
 
-    // Time formatting for display (updated)
+    // Time formatting for display
     formatTime: function(days, hours, minutes) {
         days = parseInt(days) || 0;
         hours = parseInt(hours) || 0;
@@ -403,15 +469,12 @@ const TnMStorage = {
 
         let result = [];
 
-        // Add components only if they are greater than zero
         if (days > 0) result.push(days + 'd');
         if (hours > 0) result.push(hours + 'h');
         if (minutes > 0) result.push(minutes + 'm');
 
-        // If all components are zero, show at least minutes
         if (result.length === 0) return '0m';
 
-        // Join with space
         return result.join(' ');
     },
 
@@ -425,7 +488,7 @@ const TnMStorage = {
         return date.toLocaleDateString();
     },
 
-    // Updated function: parse time string with decimal validation
+    // Parse time string with decimal validation
     parseTimeString: function(timeStr) {
         const result = {
             days: 0,
@@ -434,30 +497,25 @@ const TnMStorage = {
         };
 
         if (!timeStr || !timeStr.trim()) {
-            return null; // Empty string
+            return null;
         }
 
-        // Check for decimal numbers in the input - this is not allowed
         if (/\d+\.\d+/.test(timeStr)) {
-            return null; // Decimal numbers found - invalid format
+            return null;
         }
 
-        // Regular expression to find time components
         const daysRegex = /(\d+)\s*d/i;
         const hoursRegex = /(\d+)\s*h/i;
         const minutesRegex = /(\d+)\s*m/i;
 
-        // Find components in string
         const daysMatch = timeStr.match(daysRegex);
         const hoursMatch = timeStr.match(hoursRegex);
         const minutesMatch = timeStr.match(minutesRegex);
 
-        // If no components found, return null
         if (!daysMatch && !hoursMatch && !minutesMatch) {
             return null;
         }
 
-        // Fill found values
         if (daysMatch) result.days = parseInt(daysMatch[1]);
         if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
         if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
@@ -465,7 +523,7 @@ const TnMStorage = {
         return result;
     },
 
-    // New function: get card info by ID
+    // Get card info by ID
     getCardInfo: function(t, cardId) {
         return t.cards('all')
             .then(function(cards) {
@@ -473,7 +531,7 @@ const TnMStorage = {
             });
     },
 
-    // Convert time to minutes (convenient for calculations)
+    // Convert time to minutes
     timeToMinutes: function(days, hours, minutes) {
         return (days * 8 * 60) + (hours * 60) + minutes;
     },
