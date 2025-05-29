@@ -1,6 +1,6 @@
 // js/supabase-api.js
 const SupabaseAPI = {
-    // Замени на свои данные из Supabase проекта
+// Замени на свои данные из Supabase проекта
     SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwemJ2ZHl4bXpxd2VvZ2h0Z3pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTYyNTksImV4cCI6MjA2NDA5MjI1OX0.v61HycgpmbSxjXUkXzD6LGX5rcOmXgJv2n7EFx7Naxs',
 
@@ -53,7 +53,7 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить или создать карточку
+    // Получить или создать карточку - ИСПРАВЛЕННАЯ ВЕРСИЯ
     async ensureCard(boardId, trelloCardId) {
         try {
             // Попытаться найти существующую карточку
@@ -63,26 +63,40 @@ const SupabaseAPI = {
                 return cards[0];
             }
 
-            // Создать новую карточку
-            const newCards = await this.request('cards', {
-                method: 'POST',
-                body: JSON.stringify({
-                    trello_card_id: trelloCardId,
-                    board_id: boardId,
-                    total_days: 0,
-                    total_hours: 0,
-                    total_minutes: 0
-                })
-            });
+            // Создать новую карточку с обработкой дубликатов
+            try {
+                const newCards = await this.request('cards', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        trello_card_id: trelloCardId,
+                        board_id: boardId,
+                        total_days: 0,
+                        total_hours: 0,
+                        total_minutes: 0
+                    })
+                });
 
-            return newCards[0];
+                return newCards[0];
+            } catch (createError) {
+                // Если ошибка дубликата - попытаться найти карточку снова
+                if (createError.message.includes('duplicate key') || createError.message.includes('23505')) {
+                    console.log('Card already exists, fetching...');
+                    const existingCards = await this.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${boardId}`);
+
+                    if (existingCards.length > 0) {
+                        return existingCards[0];
+                    }
+                }
+
+                throw createError;
+            }
         } catch (error) {
             console.error('Error ensuring card:', error);
             throw error;
         }
     },
 
-    // Добавить запись времени
+    // Добавить запись времени - ИСПРАВЛЕННАЯ ВЕРСИЯ
     async addTimeEntry(boardId, trelloCardId, entry) {
         try {
             console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
@@ -90,8 +104,11 @@ const SupabaseAPI = {
             // Убедиться что доска существует
             const board = await this.ensureBoard(boardId);
 
-            // Убедиться что карточка существует
+            // Убедиться что карточка существует (с защитой от дубликатов)
             const card = await this.ensureCard(board.id, trelloCardId);
+
+            // Проверить, не существует ли уже такая запись (защита от дублирования при миграции)
+            const workDate = entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0];
 
             // Добавить запись времени
             const timeEntry = await this.request('time_entries', {
@@ -104,7 +121,7 @@ const SupabaseAPI = {
                     hours: entry.hours || 0,
                     minutes: entry.minutes || 0,
                     description: entry.description || '',
-                    work_date: entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0]
+                    work_date: workDate
                 })
             });
 
@@ -114,6 +131,13 @@ const SupabaseAPI = {
             return timeEntry[0];
         } catch (error) {
             console.error('Error adding time entry:', error);
+
+            // Если это ошибка дубликата и мы в процессе миграции, просто пропускаем
+            if (error.message.includes('duplicate key') || error.message.includes('23505')) {
+                console.log('Entry already exists, skipping...');
+                return null;
+            }
+
             throw error;
         }
     },
