@@ -157,7 +157,7 @@ const TnMStorage = {
         });
     },
 
-    // Sync card data with board storage with size limits
+    // Sync card data with board storage with size limits (WITHOUT descriptions)
     syncCardDataWithBoard: function(t, cardId, data) {
         console.log(`Starting sync for card ${cardId}`);
 
@@ -166,26 +166,40 @@ const TnMStorage = {
             return Promise.resolve();
         }
 
-        // For board storage, keep more entries but still limit
+        // For board storage, keep more entries but still limit AND remove descriptions
         const boardData = {
             days: data.days,
             hours: data.hours,
             minutes: data.minutes,
-            history: data.history.slice(-TnMStorage.MAX_BOARD_ENTRIES) // Keep last 50 entries
+            history: data.history.slice(-TnMStorage.MAX_BOARD_ENTRIES).map(function(entry) {
+                // Create a copy without description to save space in board storage
+                const entryWithoutDescription = {
+                    id: entry.id,
+                    type: entry.type,
+                    days: entry.days,
+                    hours: entry.hours,
+                    minutes: entry.minutes,
+                    date: entry.date,
+                    workDate: entry.workDate,
+                    memberId: entry.memberId,
+                    memberName: entry.memberName
+                    // Intentionally omitting description to save space
+                };
+                return entryWithoutDescription;
+            })
         };
 
-        // Don't compress for board storage since we have more space
         const dataSize = JSON.stringify(boardData).length;
-        console.log(`Board sync data size: ${dataSize} chars for ${boardData.history.length} entries`);
+        console.log(`Board sync data size: ${dataSize} chars for ${boardData.history.length} entries (without descriptions)`);
 
         if (dataSize > 8000) { // Leave margin for 8192 limit
             console.warn('Board data too large, reducing entries...');
-            boardData.history = data.history.slice(-30); // Further reduce
+            boardData.history = boardData.history.slice(-30); // Further reduce
         }
 
         return t.set('board', 'shared', `tnm-card-data-${cardId}`, boardData)
             .then(function() {
-                console.log(`Successfully synced ${boardData.history.length} entries to board storage for card ${cardId}`);
+                console.log(`Successfully synced ${boardData.history.length} entries to board storage for card ${cardId} (without descriptions)`);
                 return TnMStorage.updateKnownCardsList(t, cardId);
             })
             .catch(function(error) {
