@@ -141,6 +141,7 @@
     <p class="error-message" id="error-message"></p>
 </div>
 
+<script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
@@ -203,21 +204,26 @@
     // Export data to CSV
     async function exportToCSV() {
         try {
+            // Clear previous debug info
             document.getElementById('debug-info').innerHTML = '';
             document.getElementById('debug-info').style.display = 'none';
 
+            // Get filter parameters
             const startDateValue = document.getElementById('start-date').value;
             const endDateValue = document.getElementById('end-date').value;
             const includeEmpty = document.getElementById('include-empty').checked;
 
             addDebugInfo(`Start date: ${startDateValue}, End date: ${endDateValue}, Include empty: ${includeEmpty}`);
 
+            // Convert date strings to Date objects
             const startDate = new Date(startDateValue);
             const endDate = new Date(endDateValue);
 
+            // Set time for correct comparison (start and end of day)
             startDate.setHours(0, 0, 0, 0);
             endDate.setHours(23, 59, 59, 999);
 
+            // Check date validity
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 showError('Please specify a valid date range');
                 return;
@@ -228,32 +234,34 @@
                 return;
             }
 
+            // Show progress
             const progressContainer = document.getElementById('progress-container');
             const progressBarFill = document.getElementById('progress-bar-fill');
             const progressStatus = document.getElementById('progress-status');
 
             progressContainer.style.display = 'block';
-            progressStatus.textContent = 'Getting data from Supabase...';
+            progressStatus.textContent = 'Getting data...';
 
+            // Initialize CSV content
             let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
             let exportedRowsCount = 0;
 
-            // Проверяем, используем ли мы Supabase
+            // Check if we're using Supabase
             if (TnMStorage.USE_SUPABASE) {
                 addDebugInfo('Using Supabase for export');
 
-                // Получаем данные из Supabase
+                // Get data from Supabase
                 const exportData = await TnMStorage.getAllCardDataForExport(t, startDateValue, endDateValue);
 
                 addDebugInfo(`Found ${exportData.length} cards with data in Supabase`);
 
-                // Получаем информацию о всех карточках на доске для имён
+                // Get information about all cards on the board for names
                 const allCards = await t.cards('all');
 
                 for (let cardIndex = 0; cardIndex < exportData.length; cardIndex++) {
                     const { cardId, timeEntries } = exportData[cardIndex];
 
-                    // Находим карточку по ID
+                    // Find card by ID
                     const card = allCards.find(c => c.id === cardId);
                     const cardName = card ? card.name : `Card ${cardId}`;
 
@@ -287,7 +295,7 @@
                     progressStatus.textContent = `Processed ${cardIndex + 1} of ${exportData.length} cards`;
                 }
             } else {
-                // Fallback к старому методу через Trello Storage
+                // Fallback to old Trello Storage method
                 addDebugInfo('Using Trello Storage for export (fallback)');
 
                 const cardDataList = await TnMStorage.getAllCardDataForExport(t);
@@ -348,6 +356,7 @@
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
 
+            // Create filename with current date
             const now = new Date();
             const fileName = `trello-time-export-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
 
@@ -357,8 +366,10 @@
             link.click();
             document.body.removeChild(link);
 
-            progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from Supabase`;
+            const source = TnMStorage.USE_SUPABASE ? 'Supabase' : 'Trello Storage';
+            progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from ${source}`;
 
+            // Hide progress after a short delay
             setTimeout(() => {
                 progressContainer.style.display = 'none';
                 progressBarFill.style.width = '0%';
@@ -383,7 +394,7 @@
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-    // Initialize date fields
+        // Initialize date fields
         initDateFields();
 
         // Handler for export button
