@@ -45,7 +45,7 @@ const TnMStorage = {
             });
     },
 
-    // Get T&M data for card
+// Get T&M data for card - ВЕРСИЯ С ПРИНУДИТЕЛЬНОЙ ПРОВЕРКОЙ
     getCardData: function(t) {
         if (this.USE_SUPABASE) {
             return Promise.all([
@@ -58,19 +58,27 @@ const TnMStorage = {
                 // Получаем данные из Supabase
                 return SupabaseAPI.getCardData(board.id, card.id)
                     .then(supabaseData => {
+                        const supabaseEntryCount = supabaseData.history ? supabaseData.history.length : 0;
 
-                        // Если в Supabase нет данных, но есть старые данные и еще не мигрировали
-                        if ((!supabaseData.history || supabaseData.history.length === 0) &&
-                            oldData && !alreadyMigrated) {
+                        // ПРИНУДИТЕЛЬНАЯ ПРОВЕРКА: даже если помечено как мигрированное,
+                        // проверяем соответствие количества записей
+                        if (oldData) {
+                            const expandedOldData = this.expandData(oldData);
+                            const oldEntryCount = expandedOldData.history ? expandedOldData.history.filter(e => e.type === 'time').length : 0;
 
-                            console.log('Auto-migrating card data to Supabase...');
-                            return this.migrateCardToSupabase(t, board.id, card.id, oldData)
-                                .then(() => SupabaseAPI.getCardData(board.id, card.id))
-                                .catch(error => {
-                                    console.error('Auto-migration failed:', error);
-                                    // Fallback to old data
-                                    return this.expandData(oldData);
-                                });
+                            // Если в старых данных значительно больше записей - нужна миграция
+                            if (oldEntryCount > supabaseEntryCount + 2) { // небольшой допуск
+                                console.log(`FORCE MIGRATION: ${oldEntryCount} local entries vs ${supabaseEntryCount} in Supabase (migrated flag: ${alreadyMigrated})`);
+
+                                // Сбрасываем флаг миграции для принудительной повторной миграции
+                                return t.remove('card', 'shared', 'tnm-migrated-to-supabase')
+                                    .then(() => this.migrateCardToSupabase(t, board.id, card.id, oldData))
+                                    .then(() => SupabaseAPI.getCardData(board.id, card.id))
+                                    .catch(error => {
+                                        console.error('Force migration failed:', error);
+                                        return expandedOldData;
+                                    });
+                            }
                         }
 
                         return supabaseData;
@@ -86,7 +94,7 @@ const TnMStorage = {
             });
         }
 
-        // Старый код для Trello Storage
+        // Старый код остается без изменений
         return t.get('card', 'shared', 'tnm-data', {
             days: 0,
             hours: 0,
