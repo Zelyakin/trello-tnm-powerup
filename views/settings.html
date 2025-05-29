@@ -153,6 +153,10 @@
     <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
   </div>
 
+  <div class="button-container">
+    <button id="storage-stats-btn" class="mod-primary">View Storage Statistics</button>
+  </div>
+
   <div class="section-separator"></div>
 
   <h2>Complete Data Reset</h2>
@@ -183,6 +187,15 @@
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
+
+  // Handler for storage statistics button
+  document.getElementById('storage-stats-btn').addEventListener('click', function() {
+    t.popup({
+      title: 'Storage Statistics',
+      url: t.signUrl('./storage-stats.html'),
+      height: 600
+    });
+  });
 
   // Handler for cache clearing button
   document.getElementById('clear-cache-btn').addEventListener('click', function() {

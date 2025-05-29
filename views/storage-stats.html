@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>T&M Storage Statistics</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            color: #172B4D;
+        }
+
+        .stats-container {
+            margin-bottom: 20px;
+        }
+
+        .stats-overview {
+            background-color: #F4F5F7;
+            border-radius: 3px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .stats-label {
+            font-weight: bold;
+        }
+
+        .stats-value {
+            color: #0079BF;
+        }
+
+        .warning {
+            color: #CF513D;
+            font-weight: bold;
+        }
+
+        .card-stats {
+            border: 1px solid #DFE1E6;
+            border-radius: 3px;
+            margin-bottom: 12px;
+        }
+
+        .card-stats-header {
+            background-color: #FAFBFC;
+            padding: 12px;
+            border-bottom: 1px solid #DFE1E6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-name {
+            font-weight: bold;
+            max-width: 60%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .card-size {
+            color: #5E6C84;
+            font-size: 12px;
+        }
+
+        .card-details {
+            padding: 12px;
+            font-size: 12px;
+            color: #5E6C84;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #EBECF0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #0079BF;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.warning {
+            background-color: #FFAB00;
+        }
+
+        .progress-fill.danger {
+            background-color: #CF513D;
+        }
+
+        .loading {
+            text-align: center;
+            color: #5E6C84;
+            padding: 20px;
+        }
+
+        .error {
+            color: #CF513D;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .refresh-btn {
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        .cleanup-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #DFE1E6;
+        }
+
+        .cleanup-btn {
+            background-color: #FFAB00;
+            color: white;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        .cleanup-btn:hover {
+            background-color: #FF9500;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #5E6C84;
+            margin-top: 8px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <h2>Storage Statistics</h2>
+
+    <button id="refresh-btn" class="mod-primary refresh-btn">Refresh Statistics</button>
+
+    <div id="loading" class="loading">
+        Loading storage statistics...
+    </div>
+
+    <div id="error" class="error" style="display: none;">
+        Error loading statistics
+    </div>
+
+    <div id="stats-content" style="display: none;">
+        <div class="stats-overview">
+            <h3>Board Storage Overview</h3>
+            <div class="stats-row">
+                <span class="stats-label">Total storage keys:</span>
+                <span class="stats-value" id="total-keys">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Estimated total size:</span>
+                <span class="stats-value" id="total-size">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Cards with data:</span>
+                <span class="stats-value" id="cards-count">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Known card IDs:</span>
+                <span class="stats-value" id="known-cards">-</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="total-progress"></div>
+            </div>
+            <div class="info-text">Trello board storage limit: ~50KB (estimated)</div>
+        </div>
+
+        <h3>Card Storage Details</h3>
+        <div id="card-stats-list">
+            <!-- Card statistics will be inserted here -->
+        </div>
+
+        <div class="cleanup-section">
+            <h3>Storage Optimization</h3>
+            <button id="optimize-btn" class="cleanup-btn">Optimize Storage</button>
+            <div class="info-text">
+                This will compress old data and remove redundant entries to free up space.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/storage.js"></script>
+<script>
+    const t = TrelloPowerUp.iframe();
+
+    // Estimated limits (Trello doesn't provide exact limits)
+    const ESTIMATED_BOARD_LIMIT = 50 * 1024; // ~50KB
+    const ESTIMATED_CARD_LIMIT = 4 * 1024;   // ~4KB
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function calculateDataSize(data) {
+        return JSON.stringify(data).length;
+    }
+
+    function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('stats-content').style.display = 'none';
+    }
+
+    function showError(message) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = message || 'Error loading statistics';
+        document.getElementById('stats-content').style.display = 'none';
+    }
+
+    function showStats() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('stats-content').style.display = 'block';
+    }
+
+    async function loadStorageStats() {
+        try {
+            showLoading();
+
+            // Get all storage data
+            const [knownCardIds, allCards] = await Promise.all([
+                t.get('board', 'shared', 'tnm-known-card-ids', []),
+                t.cards('all')
+            ]);
+
+            console.log(`Found ${knownCardIds.length} known cards, ${allCards.length} total cards`);
+
+            let totalSize = 0;
+            let totalKeys = 0;
+            const cardStats = [];
+
+            // Check board-level data
+            const boardKeys = [
+                'tnm-known-card-ids',
+                'tnm-settings',
+                'tnm-cache-version',
+                'tnm-global-reset-timestamp'
+            ];
+
+            for (const key of boardKeys) {
+                try {
+                    const data = await t.get('board', 'shared', key, null);
+                    if (data !== null) {
+                        const size = calculateDataSize(data);
+                        totalSize += size;
+                        totalKeys++;
+                        console.log(`Board key ${key}: ${formatBytes(size)}`);
+                    }
+                } catch (error) {
+                    console.warn(`Error getting board key ${key}:`, error);
+                }
+            }
+
+            // Check each known card
+            const cardPromises = knownCardIds.map(async (cardId) => {
+                try {
+                    const cardData = await TnMStorage.getCardDataFromBoard(t, cardId);
+                    const card = allCards.find(c => c.id === cardId);
+
+                    if (cardData) {
+                        const size = calculateDataSize(cardData);
+                        totalSize += size;
+                        totalKeys++;
+
+                        const stat = {
+                            id: cardId,
+                            name: card ? card.name : `Card ${cardId} (deleted?)`,
+                            size: size,
+                            historyCount: cardData.history ? cardData.history.length : 0,
+                            totalTime: TnMStorage.formatTime(
+                                cardData.days || 0,
+                                cardData.hours || 0,
+                                cardData.minutes || 0
+                            ),
+                            exists: !!card
+                        };
+
+                        console.log(`Card ${stat.name}: ${formatBytes(size)}, ${stat.historyCount} entries`);
+                        return stat;
+                    }
+                } catch (error) {
+                    console.warn(`Error getting data for card ${cardId}:`, error);
+                }
+                return null;
+            });
+
+            const cardResults = await Promise.all(cardPromises);
+            cardStats.push(...cardResults.filter(stat => stat !== null));
+
+            // Sort cards by size (largest first)
+            cardStats.sort((a, b) => b.size - a.size);
+
+            // Update UI
+            document.getElementById('total-keys').textContent = totalKeys;
+            document.getElementById('total-size').textContent = formatBytes(totalSize);
+            document.getElementById('cards-count').textContent = cardStats.length;
+            document.getElementById('known-cards').textContent = knownCardIds.length;
+
+            // Update progress bar
+            const totalProgress = document.getElementById('total-progress');
+            const percentage = (totalSize / ESTIMATED_BOARD_LIMIT) * 100;
+            totalProgress.style.width = Math.min(percentage, 100) + '%';
+
+            if (percentage > 90) {
+                totalProgress.className = 'progress-fill danger';
+            } else if (percentage > 70) {
+                totalProgress.className = 'progress-fill warning';
+            } else {
+                totalProgress.className = 'progress-fill';
+            }
+
+            // Render card statistics
+            const cardStatsList = document.getElementById('card-stats-list');
+            cardStatsList.innerHTML = '';
+
+            if (cardStats.length === 0) {
+                cardStatsList.innerHTML = '<div class="info-text">No cards with data found</div>';
+            } else {
+                cardStats.forEach(stat => {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = 'card-stats';
+
+                    const percentage = (stat.size / ESTIMATED_CARD_LIMIT) * 100;
+                    let progressClass = 'progress-fill';
+                    if (percentage > 90) progressClass += ' danger';
+                    else if (percentage > 70) progressClass += ' warning';
+
+                    cardDiv.innerHTML = `
+                        <div class="card-stats-header">
+                            <div class="card-name" title="${stat.name}">
+                                ${stat.name}${!stat.exists ? ' (deleted)' : ''}
+                            </div>
+                            <div class="card-size">${formatBytes(stat.size)}</div>
+                        </div>
+                        <div class="card-details">
+                            <div>History entries: ${stat.historyCount}</div>
+                            <div>Total time: ${stat.totalTime}</div>
+                            <div class="progress-bar">
+                                <div class="${progressClass}" style="width: ${Math.min(percentage, 100)}%"></div>
+                            </div>
+                            <div>Usage: ${percentage.toFixed(1)}% of estimated card limit</div>
+                        </div>
+                    `;
+
+                    cardStatsList.appendChild(cardDiv);
+                });
+            }
+
+            showStats();
+
+        } catch (error) {
+            console.error('Error loading storage stats:', error);
+            showError('Error loading statistics: ' + error.message);
+        }
+    }
+
+    async function optimizeStorage() {
+        try {
+            const btn = document.getElementById('optimize-btn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Optimizing...';
+            btn.disabled = true;
+
+            // Get known card IDs
+            const knownCardIds = await t.get('board', 'shared', 'tnm-known-card-ids', []);
+
+            let optimizedCount = 0;
+
+            for (const cardId of knownCardIds) {
+                try {
+                    const cardData = await TnMStorage.getCardDataFromBoard(t, cardId);
+                    if (cardData && cardData.history && cardData.history.length > TnMStorage.MAX_BOARD_ENTRIES) {
+                        // Keep only recent entries
+                        const optimizedData = {
+                            ...cardData,
+                            history: cardData.history.slice(-TnMStorage.MAX_BOARD_ENTRIES)
+                        };
+
+                        await t.set('board', 'shared', `tnm-card-data-${cardId}`, optimizedData);
+                        optimizedCount++;
+                        console.log(`Optimized card ${cardId}: ${cardData.history.length} -> ${optimizedData.history.length} entries`);
+                    }
+                } catch (error) {
+                    console.warn(`Error optimizing card ${cardId}:`, error);
+                }
+            }
+
+            btn.textContent = `Optimized ${optimizedCount} cards`;
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.disabled = false;
+                loadStorageStats(); // Refresh stats
+            }, 2000);
+
+        } catch (error) {
+            console.error('Error optimizing storage:', error);
+            document.getElementById('optimize-btn').textContent = 'Error optimizing';
+            setTimeout(() => {
+                document.getElementById('optimize-btn').textContent = 'Optimize Storage';
+                document.getElementById('optimize-btn').disabled = false;
+            }, 2000);
+        }
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        loadStorageStats();
+
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            loadStorageStats();
+        });
+
+        document.getElementById('optimize-btn').addEventListener('click', function() {
+            optimizeStorage();
+        });
+    });
+</script>
+</body>
+</html>
