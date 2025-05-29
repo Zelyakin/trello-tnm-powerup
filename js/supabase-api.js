@@ -1,8 +1,8 @@
 // js/supabase-api.js
 const SupabaseAPI = {
-    // Замени на свои данные из Supabase проекта
-    SUPABASE_URL: 'https://your-project-id.supabase.co',
-    SUPABASE_ANON_KEY: 'your-anon-key',
+// Замени на свои данные из Supabase проекта
+    SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwemJ2ZHl4bXpxd2VvZ2h0Z3pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTYyNTksImV4cCI6MjA2NDA5MjI1OX0.v61HycgpmbSxjXUkXzD6LGX5rcOmXgJv2n7EFx7Naxs',
 
     // Базовый HTTP клиент остается без изменений
     async request(endpoint, options = {}) {
