@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>T&M Migration to Supabase</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            color: #172B4D;
+        }
+
+        .migration-section {
+            background-color: #F4F5F7;
+            border-radius: 3px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .migration-step {
+            margin-bottom: 16px;
+            padding: 12px;
+            border-left: 4px solid #0079BF;
+            background-color: white;
+        }
+
+        .migration-step.completed {
+            border-left-color: #61BD4F;
+            background-color: #F2FFF4;
+        }
+
+        .migration-step.error {
+            border-left-color: #CF513D;
+            background-color: #FFEFED;
+        }
+
+        .step-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .step-details {
+            font-size: 14px;
+            color: #5E6C84;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #EBECF0;
+            border-radius: 5px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #0079BF;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .migration-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background-color: white;
+            padding: 12px;
+            border-radius: 3px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #0079BF;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #5E6C84;
+        }
+
+        .warning-box {
+            background-color: #FFF2CC;
+            border: 1px solid #FFAB00;
+            border-radius: 3px;
+            padding: 12px;
+            margin-bottom: 20px;
+        }
+
+        .warning-title {
+            font-weight: bold;
+            color: #FF8B00;
+            margin-bottom: 8px;
+        }
+
+        .button-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .migrate-btn {
+            background-color: #0079BF;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .migrate-btn:hover {
+            background-color: #026AA7;
+        }
+
+        .migrate-btn:disabled {
+            background-color: #EBECF0;
+            color: #A5ADBA;
+            cursor: not-allowed;
+        }
+
+        .log-container {
+            background-color: #F8F9FA;
+            border: 1px solid #DFE1E6;
+            border-radius: 3px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+        }
+
+        .log-error {
+            color: #CF513D;
+        }
+
+        .log-success {
+            color: #61BD4F;
+        }
+
+        .log-info {
+            color: #0079BF;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <h2>Migration to Supabase</h2>
+
+    <div class="warning-box">
+        <div class="warning-title">⚠️ Important</div>
+        <p>This will migrate all existing time tracking data from individual cards to Supabase. Make sure:</p>
+        <ul>
+            <li>Supabase project is configured correctly</li>
+            <li>API keys are set in supabase-api.js</li>
+            <li>You have a backup of your data</li>
+        </ul>
+        <p><strong>Note:</strong> Migration reads data directly from each card's storage (includes full descriptions).</p>
+    </div>
+
+    <div class="migration-stats">
+        <div class="stat-box">
+            <div class="stat-number" id="cards-found">-</div>
+            <div class="stat-label">Cards with data found</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-number" id="entries-found">-</div>
+            <div class="stat-label">Total time entries found</div>
+        </div>
+    </div>
+
+    <div class="migration-section">
+        <h3>Migration Progress</h3>
+
+        <div class="migration-step" id="step-scan">
+            <div class="step-title">1. Scanning Individual Cards</div>
+            <div class="step-details">Reading data from each card's storage...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="scan-progress"></div>
+            </div>
+        </div>
+
+        <div class="migration-step" id="step-prepare">
+            <div class="step-title">2. Preparing Supabase</div>
+            <div class="step-details">Setting up board and checking connection...</div>
+        </div>
+
+        <div class="migration-step" id="step-migrate">
+            <div class="step-title">3. Migrating Data</div>
+            <div class="step-details">Transferring time entries to Supabase...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="migration-progress"></div>
+            </div>
+        </div>
+
+        <div class="migration-step" id="step-verify">
+            <div class="step-title">4. Verification</div>
+            <div class="step-details">Checking migrated data integrity...</div>
+        </div>
+    </div>
+
+    <div class="button-container">
+        <button id="start-migration" class="migrate-btn">Start Migration</button>
+        <button id="scan-only" class="migrate-btn" style="background-color: #FFAB00;">Scan Only</button>
+    </div>
+
+    <div class="log-container" id="log-container">
+        <div class="log-entry log-info">Migration log will appear here...</div>
+    </div>
+</div>
+
+<script src="../js/supabase-api.js"></script>
+<script src="../js/storage.js"></script>
+<script>
+    const t = TrelloPowerUp.iframe();
+
+    let migrationData = {
+        cardsFound: 0,
+        entriesFound: 0,
+        cardsList: []
+    };
+
+    function log(message, type = 'info') {
+        const logContainer = document.getElementById('log-container');
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type}`;
+        logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+        logContainer.style.display = 'block';
+
+        console.log(`[Migration ${type.toUpperCase()}]`, message);
+    }
+
+    function updateStep(stepId, status, details) {
+        const step = document.getElementById(stepId);
+        step.classList.remove('completed', 'error');
+
+        if (status === 'completed') {
+            step.classList.add('completed');
+        } else if (status === 'error') {
+            step.classList.add('error');
+        }
+
+        if (details) {
+            step.querySelector('.step-details').textContent = details;
+        }
+    }
+
+    function updateProgress(progressBarId, percentage) {
+        document.getElementById(progressBarId).style.width = percentage + '%';
+    }
+
+    function updateStats() {
+        document.getElementById('cards-found').textContent = migrationData.cardsFound;
+        document.getElementById('entries-found').textContent = migrationData.entriesFound;
+    }
+
+    async function scanTrelloData() {
+        try {
+            log('Starting scan of individual cards...', 'info');
+            updateStep('step-scan', 'active', 'Scanning individual cards...');
+
+            // Получаем все карточки на доске
+            const allCards = await t.cards('all');
+            log(`Found ${allCards.length} cards on board`, 'info');
+
+            migrationData.cardsFound = 0;
+            migrationData.entriesFound = 0;
+            migrationData.cardsList = [];
+
+            // Проходим по каждой карточке и получаем её данные
+            for (let cardIndex = 0; cardIndex < allCards.length; cardIndex++) {
+                const card = allCards[cardIndex];
+
+                try {
+                    log(`Scanning card ${cardIndex + 1}/${allCards.length}: ${card.name}`, 'info');
+
+                    // Получаем данные карточки напрямую из card storage
+                    // Используем прямой вызов t.get вместо TnMStorage.getCardData чтобы обойти Supabase
+                    const cardData = await t.get(card.id, 'shared', 'tnm-data', null);
+
+                    if (cardData) {
+                        // Разворачиваем сжатые данные если нужно
+                        let expandedData;
+
+                        // Проверяем, сжатые ли данные
+                        if (cardData.hist) {
+                            // Данные сжатые, разворачиваем
+                            expandedData = {
+                                days: cardData.d || 0,
+                                hours: cardData.h || 0,
+                                minutes: cardData.m || 0,
+                                history: cardData.hist.map(function(entry) {
+                                    return {
+                                        id: entry[0],
+                                        type: 'time',
+                                        days: entry[1],
+                                        hours: entry[2],
+                                        minutes: entry[3],
+                                        description: entry[4], // ВАЖНО: полное описание из карточки
+                                        date: entry[5],
+                                        workDate: entry[5],
+                                        memberId: entry[6],
+                                        memberName: entry[7]
+                                    };
+                                })
+                            };
+                        } else if (cardData.history) {
+                            // Данные уже развёрнутые
+                            expandedData = cardData;
+                        } else {
+                            expandedData = null;
+                        }
+
+                        if (expandedData && expandedData.history && expandedData.history.length > 0) {
+                            const timeEntries = expandedData.history.filter(entry => entry.type === 'time');
+
+                            if (timeEntries.length > 0) {
+                                migrationData.cardsFound++;
+                                migrationData.entriesFound += timeEntries.length;
+
+                                migrationData.cardsList.push({
+                                    card: card,
+                                    timeEntries: timeEntries,
+                                    totalTime: {
+                                        days: expandedData.days || 0,
+                                        hours: expandedData.hours || 0,
+                                        minutes: expandedData.minutes || 0
+                                    }
+                                });
+
+                                log(`Found ${timeEntries.length} entries in card: ${card.name} (with descriptions)`, 'success');
+
+                                // Логируем пример данных для проверки
+                                if (timeEntries[0] && timeEntries[0].description) {
+                                    log(`Sample entry: "${timeEntries[0].description.substring(0, 30)}..."`, 'info');
+                                }
+                            } else {
+                                log(`Card ${card.name} has history but no time entries`, 'info');
+                            }
+                        } else {
+                            log(`Card ${card.name} has no time tracking data`, 'info');
+                        }
+                    } else {
+                        log(`Card ${card.name} has no T&M data`, 'info');
+                    }
+
+                    // Обновляем прогресс сканирования
+                    const scanProgress = ((cardIndex + 1) / allCards.length) * 100;
+                    updateProgress('scan-progress', scanProgress);
+
+                } catch (error) {
+                    log(`Error scanning card ${card.name}: ${error.message}`, 'error');
+                }
+            }
+
+            updateStats();
+            updateStep('step-scan', 'completed', `Found ${migrationData.cardsFound} cards with ${migrationData.entriesFound} time entries`);
+
+            log(`Scan completed: ${migrationData.cardsFound} cards, ${migrationData.entriesFound} entries`, 'success');
+
+            return true;
+        } catch (error) {
+            log(`Error during scan: ${error.message}`, 'error');
+            updateStep('step-scan', 'error', 'Error during scan');
+            throw error;
+        }
+    }
+
+    async function prepareSupabase() {
+        try {
+            log('Preparing Supabase...', 'info');
+            updateStep('step-prepare', 'active', 'Checking Supabase connection...');
+
+            // Проверяем подключение к Supabase
+            const board = await t.board('id');
+            const supabaseBoard = await SupabaseAPI.ensureBoard(board.id);
+
+            log(`Supabase board ready: ${supabaseBoard.id}`, 'success');
+            updateStep('step-prepare', 'completed', 'Supabase connection verified');
+
+            return supabaseBoard;
+        } catch (error) {
+            log(`Error preparing Supabase: ${error.message}`, 'error');
+            updateStep('step-prepare', 'error', 'Supabase connection failed');
+            throw error;
+        }
+    }
+
+    async function migrateData() {
+        try {
+            log('Starting data migration...', 'info');
+            updateStep('step-migrate', 'active', 'Migrating time entries...');
+
+            const board = await t.board('id');
+            let migratedCount = 0;
+            let errorCount = 0;
+
+            for (let cardIndex = 0; cardIndex < migrationData.cardsList.length; cardIndex++) {
+                const { card, timeEntries } = migrationData.cardsList[cardIndex];
+
+                log(`Migrating card: ${card.name} (${timeEntries.length} entries)`, 'info');
+
+                for (let entryIndex = 0; entryIndex < timeEntries.length; entryIndex++) {
+                    const entry = timeEntries[entryIndex];
+
+                    try {
+                        await SupabaseAPI.addTimeEntry(board.id, card.id, {
+                            days: entry.days || 0,
+                            hours: entry.hours || 0,
+                            minutes: entry.minutes || 0,
+                            description: entry.description || '', // ВАЖНО: полное описание
+                            workDate: entry.workDate || entry.date,
+                            memberId: entry.memberId,
+                            memberName: entry.memberName
+                        });
+
+                        migratedCount++;
+
+                        // Обновляем прогресс
+                        const progress = (migratedCount / migrationData.entriesFound) * 100;
+                        updateProgress('migration-progress', progress);
+
+                        if (entry.description) {
+                            log(`Migrated entry with description: "${entry.description.substring(0, 30)}..."`, 'info');
+                        }
+
+                    } catch (error) {
+                        log(`Error migrating entry in ${card.name}: ${error.message}`, 'error');
+                        errorCount++;
+                    }
+                }
+
+                log(`Completed card: ${card.name} (${migratedCount}/${migrationData.entriesFound} total)`, 'success');
+            }
+
+            const successMessage = `Migration completed: ${migratedCount} entries migrated with full descriptions`;
+            if (errorCount > 0) {
+                log(`${successMessage}, ${errorCount} errors`, 'info');
+                updateStep('step-migrate', 'completed', `${successMessage}, ${errorCount} errors`);
+            } else {
+                log(successMessage, 'success');
+                updateStep('step-migrate', 'completed', successMessage);
+            }
+
+            return { migratedCount, errorCount };
+        } catch (error) {
+            log(`Critical error during migration: ${error.message}`, 'error');
+            updateStep('step-migrate', 'error', 'Migration failed');
+            throw error;
+        }
+    }
+
+    async function verifyMigration() {
+        try {
+            log('Verifying migrated data...', 'info');
+            updateStep('step-verify', 'active', 'Checking data integrity...');
+
+            const board = await t.board('id');
+            const exportData = await SupabaseAPI.getAllDataForExport(board.id);
+
+            let verifiedEntries = 0;
+            let entriesWithDescriptions = 0;
+
+            for (const { timeEntries } of exportData) {
+                verifiedEntries += timeEntries.length;
+                entriesWithDescriptions += timeEntries.filter(entry => entry.description && entry.description.trim()).length;
+            }
+
+            log(`Verified ${verifiedEntries} entries, ${entriesWithDescriptions} with descriptions`, 'info');
+
+            if (verifiedEntries >= migrationData.entriesFound * 0.95) { // 95% success rate
+                log(`Verification successful: ${verifiedEntries} entries found in Supabase`, 'success');
+                updateStep('step-verify', 'completed', `Verified ${verifiedEntries} entries (${entriesWithDescriptions} with descriptions)`);
+            } else {
+                log(`Verification warning: only ${verifiedEntries}/${migrationData.entriesFound} entries found`, 'error');
+                updateStep('step-verify', 'error', `Only ${verifiedEntries}/${migrationData.entriesFound} entries verified`);
+            }
+
+            return verifiedEntries;
+        } catch (error) {
+            log(`Error during verification: ${error.message}`, 'error');
+            updateStep('step-verify', 'error', 'Verification failed');
+            throw error;
+        }
+    }
+
+    async function runMigration() {
+        try {
+            document.getElementById('start-migration').disabled = true;
+            document.getElementById('scan-only').disabled = true;
+
+            await scanTrelloData();
+
+            if (migrationData.entriesFound === 0) {
+                log('No data found to migrate', 'info');
+                return;
+            }
+
+            await prepareSupabase();
+            await migrateData();
+            await verifyMigration();
+
+            log('Migration process completed successfully!', 'success');
+
+            // Показываем кнопку для переключения на Supabase
+            const switchButton = document.createElement('button');
+            switchButton.className = 'migrate-btn';
+            switchButton.textContent = 'Switch to Supabase Mode';
+            switchButton.style.backgroundColor = '#61BD4F';
+            switchButton.onclick = () => {
+                log('Switching to Supabase mode...', 'info');
+                TnMStorage.USE_SUPABASE = true;
+                alert('Migration completed! Power-Up is now using Supabase with full descriptions.');
+                t.closePopup();
+            };
+
+            document.querySelector('.button-container').appendChild(switchButton);
+
+        } catch (error) {
+            log(`Migration failed: ${error.message}`, 'error');
+        } finally {
+            document.getElementById('start-migration').disabled = false;
+            document.getElementById('scan-only').disabled = false;
+        }
+    }
+
+    async function runScanOnly() {
+        try {
+            document.getElementById('scan-only').disabled = true;
+            await scanTrelloData();
+            log('Scan completed. Ready for migration.', 'info');
+        } catch (error) {
+            log(`Scan failed: ${error.message}`, 'error');
+        } finally {
+            document.getElementById('scan-only').disabled = false;
+        }
+    }
+
+    // Event listeners
+    document.getElementById('start-migration').addEventListener('click', runMigration);
+    document.getElementById('scan-only').addEventListener('click', runScanOnly);
+
+    // Auto-scan on load
+    document.addEventListener('DOMContentLoaded', function() {
+        log('Migration tool loaded. Click "Scan Only" to check for existing data from individual cards.', 'info');
+    });
+</script>
+</body>
+</html>

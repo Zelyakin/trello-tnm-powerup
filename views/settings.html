@@ -53,6 +53,14 @@
       background-color: #B04632;
     }
 
+    .mod-warning {
+      background-color: #FFAB00;
+    }
+
+    .mod-warning:hover {
+      background-color: #FF9500;
+    }
+
     #status-message {
       margin-top: 16px;
       color: #0079BF;
@@ -87,6 +95,19 @@
       margin-top: 8px;
       text-align: center;
       font-style: italic;
+    }
+
+    .migration-notice {
+      background-color: #FFF2CC;
+      border: 1px solid #FFAB00;
+      border-radius: 3px;
+      padding: 12px;
+      margin-bottom: 20px;
+    }
+
+    .migration-notice h3 {
+      margin-top: 0;
+      color: #FF8B00;
     }
 
     /* Styles for confirmation dialog */
@@ -147,7 +168,17 @@
 <div>
   <h2>T&M Power-Up Settings</h2>
 
+  <!-- Migration Notice -->
+  <div class="migration-notice">
+    <h3>🚀 Supabase Migration Available</h3>
+    <p>Migrate your time tracking data to Supabase for better performance and unlimited storage.</p>
+  </div>
+
   <p>Manage Power-Up cache and data:</p>
+
+  <div class="button-container">
+    <button id="migration-btn" class="mod-warning">Migrate to Supabase</button>
+  </div>
 
   <div class="button-container">
     <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
@@ -187,6 +218,15 @@
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
+
+  // Handler for migration button
+  document.getElementById('migration-btn').addEventListener('click', function() {
+    t.popup({
+      title: 'Migration to Supabase',
+      url: t.signUrl('./migration.html'),
+      height: 700
+    });
+  });
 
   // Handler for storage statistics button
   document.getElementById('storage-stats-btn').addEventListener('click', function() {

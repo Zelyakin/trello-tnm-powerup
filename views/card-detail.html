@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../css/style.css">
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
   <style>
-    /* Existing styles without changes */
+    /* Все стили остаются без изменений */
     .delete-record {
       color: #CF513D;
       cursor: pointer;
@@ -84,7 +84,6 @@
       display: none;
     }
 
-    /* New styles for calendar */
     .date-group {
       display: flex;
       gap: 8px;
@@ -105,12 +104,10 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <!-- Time adding form with new calendar field -->
     <h3>Add Time</h3>
     <div class="form-group">
       <label for="member-select">User:</label>
       <select id="member-select">
-        <!-- User list will be filled dynamically -->
         <option value="loading">Loading users...</option>
       </select>
     </div>
@@ -142,7 +139,6 @@
   </div>
 </div>
 
-<!-- Delete confirmation dialog -->
 <div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
   <div class="confirmation-content">
     <h3>Delete Confirmation</h3>
@@ -154,83 +150,62 @@
   </div>
 </div>
 
+<script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script src="../js/board-members.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
 
-  // Function for parsing time string with decimal validation
+  // Функция парсинга времени остается без изменений
   function parseTimeString(timeStr) {
-    const result = {
-      days: 0,
-      hours: 0,
-      minutes: 0
-    };
+    const result = { days: 0, hours: 0, minutes: 0 };
 
-    if (!timeStr.trim()) {
-      return null; // Empty string
-    }
+    if (!timeStr.trim()) return null;
+    if (/\d+\.\d+/.test(timeStr)) return null;
 
-    // Check for decimal numbers in the input - this is not allowed
-    if (/\d+\.\d+/.test(timeStr)) {
-      return null; // Decimal numbers found - invalid format
-    }
-
-    // Regular expression to find time components
     const daysRegex = /(\d+)\s*d/i;
     const hoursRegex = /(\d+)\s*h/i;
     const minutesRegex = /(\d+)\s*m/i;
 
-    // Find components in string
     const daysMatch = timeStr.match(daysRegex);
     const hoursMatch = timeStr.match(hoursRegex);
     const minutesMatch = timeStr.match(minutesRegex);
 
-    // If no components found, return null
-    if (!daysMatch && !hoursMatch && !minutesMatch) {
-      return null;
-    }
+    if (!daysMatch && !hoursMatch && !minutesMatch) return null;
 
-    // Fill found values
     if (daysMatch) result.days = parseInt(daysMatch[1]);
     if (hoursMatch) result.hours = parseInt(hoursMatch[1]);
     if (minutesMatch) result.minutes = parseInt(minutesMatch[1]);
 
     return result;
   }
-  // Initialize date field on page load
+
   function initDateField() {
     const dateField = document.getElementById('work-date');
     const today = new Date();
-    // Format date in YYYY-MM-DD format for input[type="date"] field
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     dateField.value = `${year}-${month}-${day}`;
   }
 
-  // Load board members
   function loadBoardMembers() {
     const memberSelect = document.getElementById('member-select');
     memberSelect.innerHTML = '<option value="loading">Loading users...</option>';
 
-    // First get current user
     BoardMembers.getCurrentMember(t)
             .then(function(currentMember) {
-              // Then get all board members
               return BoardMembers.getBoardMembers(t)
                       .then(function(members) {
                         memberSelect.innerHTML = '';
 
-                        // Sort users so current user is first
                         members.sort(function(a, b) {
                           if (a.id === currentMember.id) return -1;
                           if (b.id === currentMember.id) return 1;
                           return a.fullName.localeCompare(b.fullName);
                         });
 
-                        // Create options for each user
                         members.forEach(function(member) {
                           const option = document.createElement('option');
                           option.value = JSON.stringify({
@@ -249,73 +224,65 @@
             });
   }
 
-  // Date formatting function
   function formatDate(dateString) {
     const date = new Date(dateString);
     return date.toLocaleDateString();
   }
 
-  // Load data on opening
   function loadData() {
     TnMStorage.getCardData(t)
             .then(function(data) {
-              // Fill time summary
               document.getElementById('time-summary').innerHTML =
                       `<p>Total time spent: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
 
-              // Fill history
               const historyList = document.getElementById('history-list');
               historyList.innerHTML = '';
 
               if (data.history && data.history.length > 0) {
-                data.history.sort((a, b) => new Date(b.date) - new Date(a.date));
+                data.history.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
                 data.history.forEach(function(record) {
                   if (record.type === 'time') {
                     const item = document.createElement('div');
                     item.className = 'history-item';
-                    item.dataset.recordId = record.id;
+                    // Используем timestamp для ID (дата создания записи)
+                    const recordId = record.id || record.date || record.created_at;
+                    item.dataset.recordId = recordId;
 
-                    // Use workDate if available, otherwise use date
-                    const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date);
-
-                    // Format time for history record
+                    const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date || record.created_at);
                     const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
 
                     item.innerHTML = `
-                      <div class="history-date">${displayDate}</div>
-                      <div class="history-type">Time</div>
-                      <div class="history-details">
-                        <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
-                      </div>
-                      <div class="history-actions">
-                        <button class="delete-record" data-record-id="${record.id}">Delete</button>
-                      </div>
-                    `;
+               <div class="history-date">${displayDate}</div>
+               <div class="history-type">Time</div>
+               <div class="history-details">
+                 <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
+               </div>
+               <div class="history-actions">
+                 <button class="delete-record" data-record-id="${recordId}">Delete</button>
+               </div>
+             `;
 
                     historyList.appendChild(item);
                   }
                 });
 
-                // Add handlers for delete buttons
                 document.querySelectorAll('.delete-record').forEach(function(button) {
                   button.addEventListener('click', function() {
-                    const recordId = parseInt(this.dataset.recordId);
+                    const recordId = this.dataset.recordId;
                     showDeleteConfirmation(recordId);
                   });
                 });
               } else {
                 historyList.innerHTML = '<p>History is empty</p>';
               }
-              // Synchronize data with board storage
-              t.card('id')
-                      .then(function(card) {
-                        TnMStorage.syncCardDataWithBoard(t, card.id, data);
-                      });
+            })
+            .catch(function(error) {
+              console.error('Error loading data:', error);
+              document.getElementById('time-summary').innerHTML = '<p>Error loading data</p>';
             });
   }
 
-  // Other functions unchanged
   function showDeleteConfirmation(recordId) {
     currentRecordToDelete = recordId;
     document.getElementById('confirmation-dialog').style.display = 'flex';
@@ -329,10 +296,7 @@
   function deleteRecord(recordId) {
     TnMStorage.deleteTimeRecord(t, recordId)
             .then(function() {
-              // Update data after deletion
               loadData();
-
-              // Notify Trello of badge updates
               t.card('id')
                       .then(function(card) {
                         return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
@@ -355,7 +319,7 @@
     });
   });
 
-  // Save time
+  // Save time - ОБНОВЛЕННАЯ ВЕРСИЯ для Supabase
   document.getElementById('save-time').addEventListener('click', function() {
     const timeInput = document.getElementById('time-input').value;
     const description = document.getElementById('time-description').value;
@@ -363,94 +327,52 @@
     const memberSelect = document.getElementById('member-select');
     const workDateInput = document.getElementById('work-date').value;
 
-    // Check that user is selected
     if (memberSelect.value === 'loading' || memberSelect.value === 'error') {
       alert('Please wait for users to load or reload the page');
       return;
     }
 
-    // Check that date is specified
     if (!workDateInput) {
       alert('Please specify the work date');
       return;
     }
 
-    // Convert date string to Date object and then to ISO string
     const workDate = new Date(workDateInput);
-
-    // Check date validity
     if (isNaN(workDate.getTime())) {
       alert('Please specify a valid date');
       return;
     }
 
-    // Get selected user data
     const selectedMember = JSON.parse(memberSelect.value);
-
-    // Parse time string
     const time = parseTimeString(timeInput);
 
     if (!time) {
-      // Show error
       timeError.style.display = 'block';
       return;
     }
 
-    // Hide error if it was shown
     timeError.style.display = 'none';
 
-    // Check that some time is specified
     if (time.days === 0 && time.hours === 0 && time.minutes === 0) {
-      // Show error
       timeError.style.display = 'block';
       return;
     }
 
-    // Get card data
-    TnMStorage.getCardData(t)
-            .then(function(data) {
-              // Create new record with selected user and date information
-              const newRecord = {
-                id: Date.now(),
-                type: 'time',
-                days: parseInt(time.days) || 0,
-                hours: parseInt(time.hours) || 0,
-                minutes: parseInt(time.minutes) || 0,
-                description: description,
-                date: new Date().toISOString(), // Actual add date
-                workDate: workDate.toISOString(), // Work date
-                memberId: selectedMember.id,
-                memberName: selectedMember.name
-              };
-
-              // Update total time
-              data.days = (parseInt(data.days) || 0) + parseInt(time.days || 0);
-              data.hours = (parseInt(data.hours) || 0) + parseInt(time.hours || 0);
-              data.minutes = (parseInt(data.minutes) || 0) + parseInt(time.minutes || 0);
-
-              // Normalize values (60 minutes = 1 hour, 8 hours = 1 day)
-              while (data.minutes >= 60) {
-                data.minutes -= 60;
-                data.hours += 1;
-              }
-
-              while (data.hours >= 8) {
-                data.hours -= 8;
-                data.days += 1;
-              }
-
-              // Add record to history
-              if (!data.history) data.history = [];
-              data.history.push(newRecord);
-
-              // Save updated data
-              return TnMStorage.saveCardData(t, data);
-            })
+    // Сохранение через Supabase API
+    TnMStorage.addTimeRecord(
+            t,
+            time.days,
+            time.hours,
+            time.minutes,
+            description,
+            workDate.toISOString(),
+            selectedMember.id,
+            selectedMember.name
+    )
             .then(function() {
               // Clear form
               document.getElementById('time-input').value = '';
               document.getElementById('time-description').value = '';
-              // Keep date field with current date
 
               // Update data
               loadData();
@@ -463,6 +385,10 @@
                       .then(function() {
                         t.closePopup();
                       });
+            })
+            .catch(function(error) {
+              console.error('Error saving time:', error);
+              alert('Error saving time: ' + error.message);
             });
   });
 
@@ -478,20 +404,17 @@
     }
   });
 
-  // Handler for time input field
   document.getElementById('time-input').addEventListener('input', function() {
-    // Hide error when field changes
     document.getElementById('time-error').style.display = 'none';
   });
 
   // Load data on opening
   document.addEventListener('DOMContentLoaded', function() {
-    initDateField(); // Initialize date field
+    initDateField();
     loadData();
     loadBoardMembers();
   });
 
-  // Handle data changes
   t.render(function() {
     loadData();
   });
