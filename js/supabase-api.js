@@ -4,28 +4,68 @@ const SupabaseAPI = {
     SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwemJ2ZHl4bXpxd2VvZ2h0Z3pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTYyNTksImV4cCI6MjA2NDA5MjI1OX0.v61HycgpmbSxjXUkXzD6LGX5rcOmXgJv2n7EFx7Naxs',
 
-    // Базовый HTTP клиент остается без изменений
-    async request(endpoint, options = {}) {
-        const url = `${this.SUPABASE_URL}/rest/v1/${endpoint}`;
-        const config = {
-            headers: {
-                'apikey': this.SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation',
-                ...options.headers
-            },
-            ...options
-        };
+// Добавить запись времени - ВЕРСИЯ С СОСТАВНЫМ КЛЮЧОМ
+    async addTimeEntry(boardId, trelloCardId, entry) {
+        try {
+            console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
 
-        const response = await fetch(url, config);
+            const board = await this.ensureBoard(boardId);
+            const card = await this.ensureCard(board.id, trelloCardId);
 
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Supabase API error: ${response.status} ${error}`);
+            const workDate = entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0];
+
+            // Проверить по СОСТАВНОМУ ключу: card_id + trello_entry_id
+            if (entry.timestampId) {
+                const existingEntries = await this.request(`time_entries?card_id=eq.${card.id}&trello_entry_id=eq.${entry.timestampId}`);
+
+                if (existingEntries.length > 0) {
+                    console.log(`Entry with timestamp ID ${entry.timestampId} already exists for card ${card.id}, skipping...`);
+                    return null;
+                }
+            }
+
+            // Подготовить данные для вставки
+            const entryData = {
+                card_id: card.id,
+                trello_member_id: entry.memberId,
+                member_name: entry.memberName,
+                days: entry.days || 0,
+                hours: entry.hours || 0,
+                minutes: entry.minutes || 0,
+                description: entry.description || '',
+                work_date: workDate
+            };
+
+            // Добавить timestamp ID если есть
+            if (entry.timestampId) {
+                entryData.trello_entry_id = entry.timestampId;
+            }
+
+            // Добавить запись времени
+            const timeEntry = await this.request('time_entries', {
+                method: 'POST',
+                body: JSON.stringify(entryData)
+            });
+
+            console.log(`New entry added successfully for card ${card.id} with timestamp ${entry.timestampId}`);
+
+            // Обновить общее время карточки
+            await this.updateCardTotalTime(card.id);
+
+            return timeEntry[0];
+        } catch (error) {
+            console.error('Error adding time entry:', error);
+
+            // Если это ошибка дубликата по составному ключу - просто пропускаем
+            if (error.message.includes('duplicate key') ||
+                error.message.includes('23505') ||
+                error.message.includes('idx_time_entries_unique')) {
+                console.log(`Duplicate card+timestamp combination detected (card_id + trello_entry_id), skipping...`);
+                return null;
+            }
+
+            throw error;
         }
-
-        return response.json();
     },
 
     async ensureBoard(trelloBoardId) {
