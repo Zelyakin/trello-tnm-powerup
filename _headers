@@ -2,6 +2,6 @@
   Access-Control-Allow-Origin: https://trello.com
   Access-Control-Allow-Methods: GET, POST, OPTIONS
   Access-Control-Allow-Headers: Content-Type
-  Content-Security-Policy: frame-ancestors https://trello.com https://*.trello.com; default-src 'self' https://p.trellocdn.com https://trello.com https://*.trello.com; script-src 'self' 'unsafe-inline' https://p.trellocdn.com; style-src 'self' 'unsafe-inline' https://p.trellocdn.com; img-src 'self' data: https://p.trellocdn.com https://trello.com https://*.trello.com
+  Content-Security-Policy: frame-ancestors https://trello.com https://*.trello.com; default-src 'self' https://p.trellocdn.com https://trello.com https://*.trello.com https://*.supabase.co; script-src 'self' 'unsafe-inline' https://p.trellocdn.com; style-src 'self' 'unsafe-inline' https://p.trellocdn.com; img-src 'self' data: https://p.trellocdn.com https://trello.com https://*.trello.com; connect-src 'self' https://p.trellocdn.com https://trello.com https://*.trello.com https://*.supabase.co
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
