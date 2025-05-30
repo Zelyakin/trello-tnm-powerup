@@ -310,14 +310,22 @@
 
       console.log(`Migration check: Local ${oldEntryCount} entries, Supabase ${supabaseEntryCount} entries`);
 
-      // Если локальных записей значительно больше - показываем кнопку миграции
-      if (oldEntryCount > supabaseEntryCount + 1) {
+      // ИСПРАВЛЕНИЕ: Показываем кнопку если есть любые локальные данные, которых нет в Supabase
+      if (oldEntryCount > supabaseEntryCount) {
         document.getElementById('migration-section').classList.add('show');
         document.getElementById('migration-status').textContent =
                 `Found ${oldEntryCount} local entries vs ${supabaseEntryCount} in Supabase`;
+
+        console.log('Showing migration button because local > supabase');
+      } else {
+        console.log('Not showing migration button: conditions not met');
       }
     } catch (error) {
       console.error('Error checking migration need:', error);
+      // В случае ошибки тоже показываем кнопку миграции
+      document.getElementById('migration-section').classList.add('show');
+      document.getElementById('migration-status').textContent =
+              'Error checking data sync - migration may be needed';
     }
   }
 
