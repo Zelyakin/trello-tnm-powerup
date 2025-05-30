@@ -1,22 +1,9 @@
-// js/client.js (modification of existing file)
+// js/client.js
 /* global TrelloPowerUp */
 
-// Function to migrate old data to new format
+// Function to migrate old data to new format (можно удалить - больше не нужна)
 function migrateData(t, data) {
-    // If data has old time field but no new fields
-    if (data && data.time !== undefined && (data.days === undefined || data.hours === undefined || data.minutes === undefined)) {
-        console.log('Migrating data from old to new format');
-
-        // Convert time from hours to new format (1 day = 8 hours)
-        const totalMinutes = Math.round(data.time * 60);
-        data.days = Math.floor(totalMinutes / (8 * 60)) || 0;
-        data.hours = Math.floor((totalMinutes % (8 * 60)) / 60) || 0;
-        data.minutes = totalMinutes % 60 || 0;
-
-        // Save updated data
-        t.set('card', 'shared', 'tnm-data', data);
-    }
-
+    // Эта функция больше не нужна, так как используем Supabase
     return data;
 }
 
@@ -54,13 +41,11 @@ TrelloPowerUp.initialize({
         }];
     },
 
-    // Card badge
+    // Card badge - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
     'card-badges': function(t, options) {
-        return t.get('card', 'shared', 'tnm-data')
+        // Используем TnMStorage.getCardData который автоматически работает с Supabase или Trello Storage
+        return TnMStorage.getCardData(t)
             .then(function(data) {
-                // Migrate data if needed
-                data = migrateData(t, data);
-
                 if (!data) return [];
 
                 // Check if there is time spent
@@ -68,21 +53,21 @@ TrelloPowerUp.initialize({
 
                 if (!hasTime) return [];
 
-                // Use our local formatting function
+                // Use formatTime function
                 return [{
                     text: formatTime(data.days, data.hours, data.minutes),
                     color: 'blue'
                 }];
             })
             .catch(function(err) {
-                console.error('Error getting data:', err);
+                console.error('Error getting badge data:', err);
                 return [];
             });
     },
 
-    // Detailed badge when card is open
+    // Detailed badge when card is open - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
     'card-detail-badges': function(t, options) {
-        return t.get('card', 'shared', 'tnm-data')
+        return TnMStorage.getCardData(t)
             .then(function(data) {
                 if (!data) return [];
 
@@ -102,11 +87,26 @@ TrelloPowerUp.initialize({
                     }
                 }];
 
-                // Use our local formatting function
+                // Use formatTime function
                 return [{
                     title: 'Time',
                     text: 'Time spent: ' + formatTime(data.days, data.hours, data.minutes),
                     color: 'blue',
+                    callback: function(t) {
+                        return t.popup({
+                            title: 'Time Tracking',
+                            url: './views/card-detail.html',
+                            height: 400
+                        });
+                    }
+                }];
+            })
+            .catch(function(err) {
+                console.error('Error getting detail badge data:', err);
+                return [{
+                    title: 'Time',
+                    text: 'Error loading',
+                    color: 'red',
                     callback: function(t) {
                         return t.popup({
                             title: 'Time Tracking',

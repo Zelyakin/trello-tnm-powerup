@@ -141,6 +141,7 @@
     <p class="error-message" id="error-message"></p>
 </div>
 
+<script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
@@ -239,74 +240,108 @@
             const progressStatus = document.getElementById('progress-status');
 
             progressContainer.style.display = 'block';
-            progressStatus.textContent = 'Searching for data...';
+            progressStatus.textContent = 'Getting data...';
 
             // Initialize CSV content
             let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
             let exportedRowsCount = 0;
 
-            // Use the new comprehensive method to get all data
-            const cardDataList = await TnMStorage.getAllCardDataForExport(t);
-            addDebugInfo(`Found ${cardDataList.length} cards with potential data`);
+            // Check if we're using Supabase
+            if (TnMStorage.USE_SUPABASE) {
+                addDebugInfo('Using Supabase for export');
 
-            progressStatus.textContent = `Processing ${cardDataList.length} cards...`;
+                // Get data from Supabase
+                const exportData = await TnMStorage.getAllCardDataForExport(t, startDateValue, endDateValue);
 
-            // Process each card with data
-            for (let cardIndex = 0; cardIndex < cardDataList.length; cardIndex++) {
-                const { card, data } = cardDataList[cardIndex];
+                addDebugInfo(`Found ${exportData.length} cards with data in Supabase`);
 
-                addDebugInfo(`Processing card ${cardIndex + 1}/${cardDataList.length}: ${card.name}`);
+                // Get information about all cards on the board for names
+                const allCards = await t.cards('all');
 
-                if (data && data.history && data.history.length > 0) {
-                    addDebugInfo(`Card ${card.name} has ${data.history.length} history entries`);
+                for (let cardIndex = 0; cardIndex < exportData.length; cardIndex++) {
+                    const { cardId, timeEntries } = exportData[cardIndex];
 
-                    // Filter entries by date (use work date if available, otherwise - actual date)
-                    const filteredHistory = data.history.filter(entry => {
-                        if (entry.type !== 'time') return false;
+                    // Find card by ID
+                    const card = allCards.find(c => c.id === cardId);
+                    const cardName = card ? card.name : `Card ${cardId}`;
 
-                        const dateToCheck = entry.workDate || entry.date;
-                        const inRange = isDateInRange(dateToCheck, startDate, endDate);
+                    addDebugInfo(`Processing card ${cardIndex + 1}/${exportData.length}: ${cardName}`);
 
-                        return inRange;
-                    });
+                    if (timeEntries && timeEntries.length > 0) {
+                        addDebugInfo(`Card ${cardName} has ${timeEntries.length} time entries`);
 
-                    addDebugInfo(`Card ${card.name}: ${filteredHistory.length} entries after date filtering`);
-
-                    // If there are history entries or need to include empty cards
-                    if (filteredHistory.length > 0) {
-                        // Add each entry to CSV
-                        filteredHistory.forEach((entry, entryIndex) => {
-                            const dateStr = formatDateForDisplay(entry.workDate || entry.date);
-                            const cardName = card.name.replace(/"/g, '""'); // Escape quotes
-                            const userName = (entry.memberName || 'User').replace(/"/g, '""');
+                        timeEntries.forEach((entry, entryIndex) => {
+                            const dateStr = formatDateForDisplay(entry.work_date);
+                            const cardNameEscaped = cardName.replace(/"/g, '""');
+                            const userName = (entry.member_name || 'User').replace(/"/g, '""');
                             const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
                             const timeMinutes = convertToMinutes(entry.days || 0, entry.hours || 0, entry.minutes || 0);
                             const description = (entry.description || '').replace(/"/g, '""');
 
-                            csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
+                            csvContent += `"${dateStr}","${cardNameEscaped}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
                             exportedRowsCount++;
 
                             addDebugInfo(`Added entry ${entryIndex + 1}: ${dateStr} - ${timeStr} (${userName})`);
                         });
                     } else if (includeEmpty) {
-                        // Add empty entry for card
-                        const cardName = card.name.replace(/"/g, '""');
-                        csvContent += `"","${cardName}","","0m","0",""\n`;
+                        const cardNameEscaped = cardName.replace(/"/g, '""');
+                        csvContent += `"","${cardNameEscaped}","","0m","0",""\n`;
                         exportedRowsCount++;
                         addDebugInfo(`Added empty entry for card: ${cardName}`);
                     }
-                } else if (includeEmpty) {
-                    // Add empty entry for card without data
-                    const cardName = card.name.replace(/"/g, '""');
-                    csvContent += `"","${cardName}","","0m","0",""\n`;
-                    exportedRowsCount++;
-                    addDebugInfo(`Added empty entry for card without data: ${cardName}`);
-                }
 
-                // Update progress
-                const progressPercent = ((cardIndex + 1) / cardDataList.length) * 100;
-                progressBarFill.style.width = `${progressPercent}%`;
-                progressStatus.textContent = `Processed ${cardIndex + 1} of ${cardDataList.length} cards`;
+                    const progressPercent = ((cardIndex + 1) / exportData.length) * 100;
+                    progressBarFill.style.width = `${progressPercent}%`;
+                    progressStatus.textContent = `Processed ${cardIndex + 1} of ${exportData.length} cards`;
+                }
+            } else {
+                // Fallback to old Trello Storage method
+                addDebugInfo('Using Trello Storage for export (fallback)');
+
+                const cardDataList = await TnMStorage.getAllCardDataForExport(t);
+                addDebugInfo(`Found ${cardDataList.length} cards with potential data`);
+
+                progressStatus.textContent = `Processing ${cardDataList.length} cards...`;
+
+                for (let cardIndex = 0; cardIndex < cardDataList.length; cardIndex++) {
+                    const { card, data } = cardDataList[cardIndex];
+
+                    addDebugInfo(`Processing card ${cardIndex + 1}/${cardDataList.length}: ${card.name}`);
+
+                    if (data && data.history && data.history.length > 0) {
+                        const filteredHistory = data.history.filter(entry => {
+                            if (entry.type !== 'time') return false;
+                            const dateToCheck = entry.workDate || entry.date;
+                            return isDateInRange(dateToCheck, startDate, endDate);
+                        });
+
+                        if (filteredHistory.length > 0) {
+                            filteredHistory.forEach((entry, entryIndex) => {
+                                const dateStr = formatDateForDisplay(entry.workDate || entry.date);
+                                const cardName = card.name.replace(/"/g, '""');
+                                const userName = (entry.memberName || 'User').replace(/"/g, '""');
+                                const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                                const timeMinutes = convertToMinutes(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                                const description = (entry.description || '').replace(/"/g, '""');
+
+                                csvContent += `"${dateStr}","${cardName}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
+                                exportedRowsCount++;
+                            });
+                        } else if (includeEmpty) {
+                            const cardName = card.name.replace(/"/g, '""');
+                            csvContent += `"","${cardName}","","0m","0",""\n`;
+                            exportedRowsCount++;
+                        }
+                    } else if (includeEmpty) {
+                        const cardName = card.name.replace(/"/g, '""');
+                        csvContent += `"","${cardName}","","0m","0",""\n`;
+                        exportedRowsCount++;
+                    }
+
+                    const progressPercent = ((cardIndex + 1) / cardDataList.length) * 100;
+                    progressBarFill.style.width = `${progressPercent}%`;
+                    progressStatus.textContent = `Processed ${cardIndex + 1} of ${cardDataList.length} cards`;
+                }
             }
 
             addDebugInfo(`Export completed. Total rows exported: ${exportedRowsCount}`);
@@ -331,7 +366,8 @@
             link.click();
             document.body.removeChild(link);
 
-            progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported`;
+            const source = TnMStorage.USE_SUPABASE ? 'Supabase' : 'Trello Storage';
+            progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from ${source}`;
 
             // Hide progress after a short delay
             setTimeout(() => {
@@ -358,7 +394,7 @@
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-    // Initialize date fields
+        // Initialize date fields
         initDateFields();
 
         // Handler for export button
