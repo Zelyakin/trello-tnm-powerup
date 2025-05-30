@@ -92,6 +92,55 @@
     .date-group input[type="date"] {
       flex: 1;
     }
+
+    /* Новые стили для кнопки миграции */
+    .migration-section {
+      margin-top: 16px;
+      padding: 12px;
+      background-color: #FFF3CD;
+      border: 1px solid #FFECB3;
+      border-radius: 3px;
+      display: none;
+    }
+
+    .migration-section.show {
+      display: block;
+    }
+
+    .migration-section h4 {
+      margin: 0 0 8px 0;
+      color: #B8860B;
+    }
+
+    .migration-section p {
+      margin: 0 0 12px 0;
+      font-size: 12px;
+      color: #B8860B;
+    }
+
+    .migration-btn {
+      background-color: #FFC107;
+      color: #000;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+
+    .migration-btn:hover {
+      background-color: #FFB300;
+    }
+
+    .migration-btn:disabled {
+      background-color: #CCCCCC;
+      color: #666666;
+      cursor: not-allowed;
+    }
+
+    .migration-status {
+      font-size: 11px;
+      color: #5E6C84;
+      margin-top: 8px;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -129,6 +178,14 @@
 
     <div class="summary" id="time-summary">
       <!-- Total time will be displayed here -->
+    </div>
+
+    <!-- Новая секция для миграции -->
+    <div class="migration-section" id="migration-section">
+      <h4>🔄 Data Migration</h4>
+      <p>Local data found that may not be synchronized with Supabase. Click below to force migration.</p>
+      <button class="migration-btn" id="force-migration-btn">Force Data Migration</button>
+      <div class="migration-status" id="migration-status"></div>
     </div>
   </div>
 
@@ -229,6 +286,96 @@
     return date.toLocaleDateString();
   }
 
+  // Новая функция для проверки необходимости миграции
+  async function checkMigrationNeed() {
+    try {
+      if (!TnMStorage.USE_SUPABASE) {
+        return; // Не используем Supabase
+      }
+
+      const [oldData, supabaseData] = await Promise.all([
+        t.get('card', 'shared', 'tnm-data', null),
+        Promise.all([t.board('id'), t.card('id')]).then(([board, card]) =>
+                SupabaseAPI.getCardData(board.id, card.id)
+        )
+      ]);
+
+      if (!oldData) {
+        return; // Нет локальных данных
+      }
+
+      const expandedOldData = TnMStorage.expandData(oldData);
+      const oldEntryCount = expandedOldData.history ? expandedOldData.history.filter(e => e.type === 'time').length : 0;
+      const supabaseEntryCount = supabaseData.history ? supabaseData.history.length : 0;
+
+      console.log(`Migration check: Local ${oldEntryCount} entries, Supabase ${supabaseEntryCount} entries`);
+
+      // Если локальных записей значительно больше - показываем кнопку миграции
+      if (oldEntryCount > supabaseEntryCount + 1) {
+        document.getElementById('migration-section').classList.add('show');
+        document.getElementById('migration-status').textContent =
+                `Found ${oldEntryCount} local entries vs ${supabaseEntryCount} in Supabase`;
+      }
+    } catch (error) {
+      console.error('Error checking migration need:', error);
+    }
+  }
+
+  // Новая функция для принудительной миграции
+  async function forceMigration() {
+    const btn = document.getElementById('force-migration-btn');
+    const status = document.getElementById('migration-status');
+
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Migrating...';
+      status.textContent = 'Starting migration...';
+
+      // Сбрасываем флаг миграции
+      await t.remove('card', 'shared', 'tnm-migrated-to-supabase');
+
+      // Получаем старые данные
+      const oldData = await t.get('card', 'shared', 'tnm-data', null);
+
+      if (!oldData) {
+        status.textContent = 'No local data found to migrate';
+        btn.textContent = 'No Data to Migrate';
+        return;
+      }
+
+      // Выполняем миграцию
+      const [board, card] = await Promise.all([t.board('id'), t.card('id')]);
+
+      status.textContent = 'Migrating data to Supabase...';
+
+      const result = await TnMStorage.migrateCardToSupabase(t, board.id, card.id, oldData);
+
+      if (result) {
+        status.textContent = `Migration completed: ${result.successCount} new, ${result.skipCount} skipped, ${result.errorCount} errors`;
+        btn.textContent = 'Migration Completed';
+
+        // Обновляем данные
+        setTimeout(() => {
+          loadData();
+          document.getElementById('migration-section').classList.remove('show');
+        }, 2000);
+      } else {
+        status.textContent = 'Migration completed';
+        btn.textContent = 'Migration Completed';
+      }
+
+    } catch (error) {
+      console.error('Force migration error:', error);
+      status.textContent = 'Migration failed: ' + error.message;
+      btn.textContent = 'Migration Failed';
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Force Data Migration';
+      }, 5000);
+    }
+  }
+
   function loadData() {
     TnMStorage.getCardData(t)
             .then(function(data) {
@@ -275,11 +422,17 @@
                 });
               } else {
                 historyList.innerHTML = '<p>History is empty</p>';
+
+                // Если история пустая - проверяем нужна ли миграция
+                checkMigrationNeed();
               }
             })
             .catch(function(error) {
               console.error('Error loading data:', error);
               document.getElementById('time-summary').innerHTML = '<p>Error loading data</p>';
+
+              // При ошибке тоже проверяем миграцию
+              checkMigrationNeed();
             });
   }
 
@@ -406,6 +559,11 @@
 
   document.getElementById('time-input').addEventListener('input', function() {
     document.getElementById('time-error').style.display = 'none';
+  });
+
+  // Новый обработчик для кнопки принудительной миграции
+  document.getElementById('force-migration-btn').addEventListener('click', function() {
+    forceMigration();
   });
 
   // Load data on opening
