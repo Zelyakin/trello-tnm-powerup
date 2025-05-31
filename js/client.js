@@ -1,33 +1,10 @@
 // js/client.js
 /* global TrelloPowerUp */
 
-// Function to migrate old data to new format (можно удалить - больше не нужна)
-function migrateData(t, data) {
-    // Эта функция больше не нужна, так как используем Supabase
-    return data;
-}
-
-// Updated function to format time in unified format
-function formatTime(days, hours, minutes) {
-    days = parseInt(days) || 0;
-    hours = parseInt(hours) || 0;
-    minutes = parseInt(minutes) || 0;
-
-    let result = [];
-
-    if (days > 0) result.push(days + 'd');
-    if (hours > 0) result.push(hours + 'h');
-    if (minutes > 0) result.push(minutes + 'm');
-
-    if (result.length === 0) return '0m';
-
-    return result.join(' ');
-}
-
 // Power-Up initialization
 TrelloPowerUp.initialize({
     // Card menu button
-    'card-buttons': function(t, options) {
+    'card-buttons': function(t) {
         return [{
             icon: './img/icon.png',
             text: 'T&M',
@@ -42,7 +19,7 @@ TrelloPowerUp.initialize({
     },
 
     // Card badge - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
-    'card-badges': function(t, options) {
+    'card-badges': function(t) {
         // Используем TnMStorage.getCardData который автоматически работает с Supabase или Trello Storage
         return TnMStorage.getCardData(t)
             .then(function(data) {
@@ -53,9 +30,9 @@ TrelloPowerUp.initialize({
 
                 if (!hasTime) return [];
 
-                // Use formatTime function
+                // Use TnMStorage.formatTime function
                 return [{
-                    text: formatTime(data.days, data.hours, data.minutes),
+                    text: TnMStorage.formatTime(data.days, data.hours, data.minutes),
                     color: 'blue'
                 }];
             })
@@ -66,7 +43,7 @@ TrelloPowerUp.initialize({
     },
 
     // Detailed badge when card is open - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
-    'card-detail-badges': function(t, options) {
+    'card-detail-badges': function(t) {
         return TnMStorage.getCardData(t)
             .then(function(data) {
                 if (!data) return [];
@@ -87,10 +64,10 @@ TrelloPowerUp.initialize({
                     }
                 }];
 
-                // Use formatTime function
+                // Use TnMStorage.formatTime function
                 return [{
                     title: 'Time',
-                    text: 'Time spent: ' + formatTime(data.days, data.hours, data.minutes),
+                    text: 'Time spent: ' + TnMStorage.formatTime(data.days, data.hours, data.minutes),
                     color: 'blue',
                     callback: function(t) {
                         return t.popup({
@@ -118,7 +95,7 @@ TrelloPowerUp.initialize({
             });
     },
 
-    'card-back-section': function(t, options) {
+    'card-back-section': function(t) {
         return {
             title: 'Time Tracking',
             icon: './img/icon.png',
@@ -130,7 +107,7 @@ TrelloPowerUp.initialize({
         };
     },
 
-    'board-buttons': function(t, options) {
+    'board-buttons': function(t) {
         return [
             {
                 icon: {
@@ -149,7 +126,7 @@ TrelloPowerUp.initialize({
         ];
     },
 
-    'show-settings': function(t, options) {
+    'show-settings': function(t) {
         return t.popup({
             title: 'T&M Settings',
             url: './views/settings.html',
