@@ -32,7 +32,7 @@ const SupabaseAPI = {
     // Получить или создать доску
     async ensureBoard(trelloBoardId) {
         try {
-            // ИСПРАВЛЕНИЕ: используем SupabaseAPI.request вместо this.request
+
             const boards = await SupabaseAPI.request(`boards?trello_board_id=eq.${trelloBoardId}`);
 
             if (boards.length > 0) {
@@ -93,7 +93,7 @@ const SupabaseAPI = {
         }
     },
 
-    // Добавить запись времени - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Добавить запись времени
     async addTimeEntry(boardId, trelloCardId, entry) {
         try {
             console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
