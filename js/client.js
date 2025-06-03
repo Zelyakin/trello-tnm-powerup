@@ -124,7 +124,10 @@ TrelloPowerUp.initialize({
                 }
             },
             {
-                icon: '∑',
+                icon: {
+                    dark: 'https://trello-tnm-powerup.pages.dev/img/sigma-icon.svg',
+                    light: 'https://trello-tnm-powerup.pages.dev/img/sigma-icon.svg'
+                },
                 text: 'T&M Stats',
                 callback: function(t) {
                     return t.popup({
