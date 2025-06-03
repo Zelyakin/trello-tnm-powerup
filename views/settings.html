@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>T&M Settings</title>
@@ -89,19 +89,6 @@
       font-style: italic;
     }
 
-    .supabase-info {
-      background-color: #E3FCEF;
-      border: 1px solid #61BD4F;
-      border-radius: 3px;
-      padding: 12px;
-      margin-bottom: 20px;
-    }
-
-    .supabase-info h3 {
-      margin-top: 0;
-      color: #61BD4F;
-    }
-
     /* Styles for confirmation dialog */
     .confirmation-dialog {
       position: fixed;
@@ -160,16 +147,14 @@
 <div>
   <h2>T&M Power-Up Settings</h2>
 
-  <!-- Supabase Status Info -->
-  <div class="supabase-info">
-    <h3>✅ Supabase Integration Active</h3>
-    <p>Time tracking data is automatically stored in Supabase. Data migration happens automatically when you open cards.</p>
-  </div>
-
   <p>Manage Power-Up cache and data:</p>
 
   <div class="button-container">
     <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
+  </div>
+
+  <div class="button-container">
+    <button id="clear-api-cache-btn" class="mod-primary">Clear API Cache</button>
   </div>
 
   <div class="button-container">
@@ -221,9 +206,13 @@
     // Clear local temporary cache
     localStorage.clear();
 
+    // Clear Supabase API cache
+    if (window.SupabaseAPI) {
+      window.SupabaseAPI.clearCache();
+    }
+
     // Show status message
     document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').textContent = 'Cache cleared. Reloading...';
 
     // Update last update timestamp
     t.set('board', 'shared', 'tnm-cache-version', Date.now())
@@ -234,6 +223,21 @@
                 window.location.reload(true);
               }, 2000);
             });
+  });
+
+  // Handler for API cache clearing button
+  document.getElementById('clear-api-cache-btn').addEventListener('click', function() {
+    if (window.SupabaseAPI) {
+      window.SupabaseAPI.clearCache();
+
+      // Show status message
+      document.getElementById('status-message').style.display = 'block';
+      document.getElementById('status-message').textContent = 'API cache cleared successfully';
+
+      setTimeout(() => {
+        document.getElementById('status-message').style.display = 'none';
+      }, 3000);
+    }
   });
 
   // Handler for reset all data button
