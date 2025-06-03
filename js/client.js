@@ -124,7 +124,7 @@ TrelloPowerUp.initialize({
                 }
             },
             {
-                icon: './img/icon.png',
+                icon: '∑',
                 text: 'T&M Stats',
                 callback: function(t) {
                     return t.popup({

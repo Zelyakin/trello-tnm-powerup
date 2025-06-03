@@ -129,7 +129,6 @@
             <button class="period-btn" data-period="current-month">Current Month</button>
             <button class="period-btn" data-period="last-month">Last Month</button>
             <button class="period-btn" data-period="current-week">Current Week</button>
-            <button class="period-btn" data-period="all-time">All Time</button>
         </div>
     </div>
 
@@ -166,7 +165,7 @@
         </div>
 
         <div class="top-contributors">
-            <h3>Top Contributors</h3>
+            <h3>Top 3 Contributors</h3>
             <div id="contributors-list">
                 <!-- Contributors will be inserted here -->
             </div>
@@ -222,10 +221,6 @@
                 endDate.setDate(startDate.getDate() + 6);
                 endDate.setHours(23, 59, 59, 999);
                 break;
-            case 'all-time':
-                startDate = null;
-                endDate = null;
-                break;
         }
 
         return { startDate, endDate };
@@ -264,8 +259,6 @@
                 return `${startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
             case 'current-week':
                 return `Week ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
-            case 'all-time':
-                return 'All Time';
             default:
                 return period;
         }
@@ -393,7 +386,7 @@
                     const aMinutes = TnMStorage.timeToMinutes(a[1].days, a[1].hours, a[1].minutes);
                     const bMinutes = TnMStorage.timeToMinutes(b[1].days, b[1].hours, b[1].minutes);
                     return bMinutes - aMinutes;
-                });
+                }).slice(0,3); // Ограничиваем до 3 участников
 
                 sortedContributors.forEach(([name, time]) => {
                     // Normalize contributor time
