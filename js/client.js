@@ -122,6 +122,17 @@ TrelloPowerUp.initialize({
                         height: 400
                     });
                 }
+            },
+            {
+                icon: './img/icon.png',
+                text: 'T&M Stats',
+                callback: function(t) {
+                    return t.popup({
+                        title: 'Board Time Statistics',
+                        url: './views/board-stats.html',
+                        height: 600
+                    });
+                }
             }
         ];
     },
