@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>T&M Settings</title>
@@ -173,6 +173,10 @@
   </div>
 
   <div class="button-container">
+    <button id="clear-api-cache-btn" class="mod-primary">Clear API Cache</button>
+  </div>
+
+  <div class="button-container">
     <button id="storage-stats-btn" class="mod-primary">View Storage Statistics</button>
   </div>
 
@@ -221,9 +225,13 @@
     // Clear local temporary cache
     localStorage.clear();
 
+    // Clear Supabase API cache
+    if (window.SupabaseAPI) {
+      window.SupabaseAPI.clearCache();
+    }
+
     // Show status message
     document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').textContent = 'Cache cleared. Reloading...';
 
     // Update last update timestamp
     t.set('board', 'shared', 'tnm-cache-version', Date.now())
@@ -234,6 +242,21 @@
                 window.location.reload(true);
               }, 2000);
             });
+  });
+
+  // Handler for API cache clearing button
+  document.getElementById('clear-api-cache-btn').addEventListener('click', function() {
+    if (window.SupabaseAPI) {
+      window.SupabaseAPI.clearCache();
+
+      // Show status message
+      document.getElementById('status-message').style.display = 'block';
+      document.getElementById('status-message').textContent = 'API cache cleared successfully';
+
+      setTimeout(() => {
+        document.getElementById('status-message').style.display = 'none';
+      }, 3000);
+    }
   });
 
   // Handler for reset all data button
