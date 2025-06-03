@@ -79,7 +79,49 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить данные карточки (с TTL кешированием)
+    // ИСПРАВЛЕННАЯ функция для получения или создания карточки
+    async ensureCard(boardId, trelloCardId) {
+        try {
+            const board = await SupabaseAPI.ensureBoard(boardId);
+
+            // Получаем карточку
+            const cards = await SupabaseAPI.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
+
+            if (cards.length > 0) {
+                return cards[0];
+            }
+
+            // Создаем новую карточку только если не найдена
+            try {
+                const newCards = await SupabaseAPI.request('cards', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        trello_card_id: trelloCardId,
+                        board_id: board.id,
+                        total_days: 0,
+                        total_hours: 0,
+                        total_minutes: 0
+                    })
+                });
+                return newCards[0];
+            } catch (createError) {
+                // Если ошибка создания из-за дубликата, пытаемся получить еще раз
+                if (createError.message.includes('duplicate key') || createError.message.includes('23505')) {
+                    console.log('Card creation failed due to duplicate, fetching existing card...');
+                    const existingCards = await SupabaseAPI.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
+                    if (existingCards.length > 0) {
+                        return existingCards[0];
+                    }
+                }
+                throw createError;
+            }
+        } catch (error) {
+            console.error('Error ensuring card:', error);
+            throw error;
+        }
+    },
+
+    // ИСПРАВЛЕННАЯ функция получения данных карточки
     async getCardData(boardId, trelloCardId) {
         try {
             const cacheKey = `${boardId}_${trelloCardId}`;
@@ -93,28 +135,8 @@ const SupabaseAPI = {
 
             console.log(`Fetching fresh card data for ${cacheKey}`);
 
-            const board = await SupabaseAPI.ensureBoard(boardId);
-
-            // Получаем или создаем карточку
-            const cards = await SupabaseAPI.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
-
-            let card;
-            if (cards.length === 0) {
-                // Создаем новую карточку
-                const newCards = await SupabaseAPI.request('cards', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        trello_card_id: trelloCardId,
-                        board_id: board.id,
-                        total_days: 0,
-                        total_hours: 0,
-                        total_minutes: 0
-                    })
-                });
-                card = newCards[0];
-            } else {
-                card = cards[0];
-            }
+            // Используем новую функцию ensureCard
+            const card = await this.ensureCard(boardId, trelloCardId);
 
             // Получаем записи времени
             const timeEntries = await SupabaseAPI.request(`time_entries?card_id=eq.${card.id}&order=created_at.desc`);
@@ -160,32 +182,13 @@ const SupabaseAPI = {
         console.log(`Card cache invalidated for ${cacheKey}`);
     },
 
-    // Добавить запись времени
+    // ИСПРАВЛЕННАЯ функция добавления записи времени
     async addTimeEntry(boardId, trelloCardId, entry) {
         try {
             console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
 
-            const board = await SupabaseAPI.ensureBoard(boardId);
-
-            // Для добавления записи НЕ используем кеш карточки, всегда получаем свежие данные
-            const cards = await SupabaseAPI.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
-
-            let card;
-            if (cards.length === 0) {
-                const newCards = await SupabaseAPI.request('cards', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        trello_card_id: trelloCardId,
-                        board_id: board.id,
-                        total_days: 0,
-                        total_hours: 0,
-                        total_minutes: 0
-                    })
-                });
-                card = newCards[0];
-            } else {
-                card = cards[0];
-            }
+            // Используем новую функцию ensureCard
+            const card = await this.ensureCard(boardId, trelloCardId);
 
             const workDate = entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0];
 
@@ -290,13 +293,7 @@ const SupabaseAPI = {
         try {
             console.log('Deleting time entry from Supabase:', { boardId, trelloCardId, entryTimestamp });
 
-            const board = await SupabaseAPI.ensureBoard(boardId);
-
-            // Для удаления тоже получаем свежие данные карточки
-            const cards = await SupabaseAPI.request(`cards?trello_card_id=eq.${trelloCardId}&board_id=eq.${board.id}`);
-            if (cards.length === 0) throw new Error('Card not found');
-
-            const card = cards[0];
+            const card = await this.ensureCard(boardId, trelloCardId);
 
             await SupabaseAPI.request(`time_entries?card_id=eq.${card.id}&created_at=eq.${entryTimestamp}`, {
                 method: 'DELETE'
