@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>T&M Board Statistics</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            color: #172B4D;
+        }
+
+        .stats-overview {
+            background-color: #F4F5F7;
+            border-radius: 3px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #DFE1E6;
+        }
+
+        .stats-row:last-child {
+            border-bottom: none;
+            font-weight: bold;
+            font-size: 16px;
+            color: #0079BF;
+        }
+
+        .stats-label {
+            font-weight: bold;
+        }
+
+        .stats-value {
+            color: #0079BF;
+        }
+
+        .period-selector {
+            margin-bottom: 20px;
+        }
+
+        .period-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .period-btn {
+            padding: 6px 12px;
+            background-color: #EBECF0;
+            color: #172B4D;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .period-btn.active {
+            background-color: #0079BF;
+            color: white;
+        }
+
+        .period-btn:hover:not(.active) {
+            background-color: #DFE1E6;
+        }
+
+        .loading {
+            text-align: center;
+            color: #5E6C84;
+            padding: 20px;
+        }
+
+        .error {
+            color: #CF513D;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .top-contributors {
+            margin-top: 20px;
+        }
+
+        .contributor-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 12px;
+            margin-bottom: 4px;
+            background-color: #FAFBFC;
+            border-radius: 3px;
+            border: 1px solid #DFE1E6;
+        }
+
+        .contributor-name {
+            font-weight: bold;
+        }
+
+        .contributor-time {
+            color: #0079BF;
+        }
+
+        .refresh-btn {
+            margin-bottom: 20px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <h2>Board Time Statistics</h2>
+
+    <button id="refresh-btn" class="mod-primary refresh-btn">Refresh Data</button>
+
+    <div class="period-selector">
+        <label><strong>Period:</strong></label>
+        <div class="period-buttons">
+            <button class="period-btn" data-period="current-month">Current Month</button>
+            <button class="period-btn" data-period="last-month">Last Month</button>
+            <button class="period-btn" data-period="current-week">Current Week</button>
+        </div>
+    </div>
+
+    <div id="loading" class="loading">
+        Loading statistics...
+    </div>
+
+    <div id="error" class="error" style="display: none;">
+        Error loading statistics
+    </div>
+
+    <div id="stats-content" style="display: none;">
+        <div class="stats-overview">
+            <div class="stats-row">
+                <span class="stats-label">Period:</span>
+                <span class="stats-value" id="period-display">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Total time spent:</span>
+                <span class="stats-value" id="total-time">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Number of entries:</span>
+                <span class="stats-value" id="total-entries">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Active cards:</span>
+                <span class="stats-value" id="active-cards">-</span>
+            </div>
+            <div class="stats-row">
+                <span class="stats-label">Average per day:</span>
+                <span class="stats-value" id="avg-per-day">-</span>
+            </div>
+        </div>
+
+        <div class="top-contributors">
+            <h3>Top 3 Contributors</h3>
+            <div id="contributors-list">
+                <!-- Contributors will be inserted here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="../js/supabase-api.js"></script>
+<script src="../js/storage.js"></script>
+<script>
+    const t = TrelloPowerUp.iframe();
+    let currentPeriod = 'current-month';
+
+    function showLoading() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('stats-content').style.display = 'none';
+    }
+
+    function showError(message) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = message || 'Error loading statistics';
+        document.getElementById('stats-content').style.display = 'none';
+    }
+
+    function showStats() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('stats-content').style.display = 'block';
+    }
+
+    function getPeriodDates(period) {
+        const now = new Date();
+        let startDate, endDate;
+
+        switch (period) {
+            case 'current-month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                break;
+            case 'last-month':
+                startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+                break;
+            case 'current-week':
+                const dayOfWeek = now.getDay();
+                const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+                startDate = new Date(now);
+                startDate.setDate(now.getDate() + mondayOffset);
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 6);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+        }
+
+        return { startDate, endDate };
+    }
+
+    function formatDateForAPI(date) {
+        if (!date) return null;
+        return date.toISOString().split('T')[0];
+    }
+
+    function isDateInRange(dateString, startDate, endDate) {
+        if (!dateString) return false;
+
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return false;
+
+        if (startDate && date < startDate) return false;
+        if (endDate && date > endDate) return false;
+
+        return true;
+    }
+
+    function calculateDaysBetween(startDate, endDate) {
+        if (!startDate || !endDate) return 1;
+        const diffTime = Math.abs(endDate - startDate);
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    function getPeriodDisplayName(period) {
+        const { startDate, endDate } = getPeriodDates(period);
+
+        switch (period) {
+            case 'current-month':
+                return `${startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+            case 'last-month':
+                return `${startDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`;
+            case 'current-week':
+                return `Week ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
+            default:
+                return period;
+        }
+    }
+
+    async function loadBoardStats() {
+        try {
+            showLoading();
+
+            const { startDate, endDate } = getPeriodDates(currentPeriod);
+
+            let totalDays = 0;
+            let totalHours = 0;
+            let totalMinutes = 0;
+            let totalEntries = 0;
+            let activeCards = new Set();
+            const contributors = new Map();
+
+            if (TnMStorage.USE_SUPABASE) {
+                // Get data from Supabase
+                const boardId = await t.board('id').then(board => board.id);
+                const exportData = await TnMStorage.getAllCardDataForExport(
+                    t,
+                    formatDateForAPI(startDate),
+                    formatDateForAPI(endDate)
+                );
+
+                // Get card names
+                const allCards = await t.cards('all');
+                const cardNameMap = new Map();
+                allCards.forEach(card => cardNameMap.set(card.id, card.name));
+
+                exportData.forEach(({ cardId, timeEntries }) => {
+                    if (timeEntries && timeEntries.length > 0) {
+                        activeCards.add(cardId);
+
+                        timeEntries.forEach(entry => {
+                            totalDays += entry.days || 0;
+                            totalHours += entry.hours || 0;
+                            totalMinutes += entry.minutes || 0;
+                            totalEntries++;
+
+                            // Count by contributor
+                            const memberName = entry.member_name || 'Unknown';
+                            if (!contributors.has(memberName)) {
+                                contributors.set(memberName, { days: 0, hours: 0, minutes: 0 });
+                            }
+                            const contrib = contributors.get(memberName);
+                            contrib.days += entry.days || 0;
+                            contrib.hours += entry.hours || 0;
+                            contrib.minutes += entry.minutes || 0;
+                        });
+                    }
+                });
+            } else {
+                // Fallback to Trello Storage
+                const cardDataList = await TnMStorage.getAllCardDataForExport(t);
+
+                cardDataList.forEach(({ card, data }) => {
+                    if (data && data.history && data.history.length > 0) {
+                        const filteredHistory = data.history.filter(entry => {
+                            if (entry.type !== 'time') return false;
+                            const dateToCheck = entry.workDate || entry.date;
+                            return isDateInRange(dateToCheck, startDate, endDate);
+                        });
+
+                        if (filteredHistory.length > 0) {
+                            activeCards.add(card.id);
+
+                            filteredHistory.forEach(entry => {
+                                totalDays += entry.days || 0;
+                                totalHours += entry.hours || 0;
+                                totalMinutes += entry.minutes || 0;
+                                totalEntries++;
+
+                                // Count by contributor
+                                const memberName = entry.memberName || 'Unknown';
+                                if (!contributors.has(memberName)) {
+                                    contributors.set(memberName, { days: 0, hours: 0, minutes: 0 });
+                                }
+                                const contrib = contributors.get(memberName);
+                                contrib.days += entry.days || 0;
+                                contrib.hours += entry.hours || 0;
+                                contrib.minutes += entry.minutes || 0;
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Normalize total time
+            while (totalMinutes >= 60) {
+                totalMinutes -= 60;
+                totalHours += 1;
+            }
+            while (totalHours >= 8) {
+                totalHours -= 8;
+                totalDays += 1;
+            }
+
+            // Calculate average per day
+            const periodDays = calculateDaysBetween(startDate, endDate);
+            const totalMinutesForAvg = (totalDays * 8 * 60) + (totalHours * 60) + totalMinutes;
+            const avgMinutesPerDay = totalMinutesForAvg / periodDays;
+            const avgDays = Math.floor(avgMinutesPerDay / (8 * 60));
+            const avgHours = Math.floor((avgMinutesPerDay % (8 * 60)) / 60);
+            const avgMinutes = Math.floor(avgMinutesPerDay % 60);
+
+            // Update UI
+            document.getElementById('period-display').textContent = getPeriodDisplayName(currentPeriod);
+            document.getElementById('total-time').textContent = TnMStorage.formatTime(totalDays, totalHours, totalMinutes);
+            document.getElementById('total-entries').textContent = totalEntries;
+            document.getElementById('active-cards').textContent = activeCards.size;
+            document.getElementById('avg-per-day').textContent = TnMStorage.formatTime(avgDays, avgHours, avgMinutes);
+
+            // Render contributors
+            const contributorsList = document.getElementById('contributors-list');
+            contributorsList.innerHTML = '';
+
+            if (contributors.size === 0) {
+                contributorsList.innerHTML = '<div style="text-align: center; color: #5E6C84; font-style: italic;">No data for selected period</div>';
+            } else {
+                // Sort contributors by total time (convert to minutes for comparison)
+                const sortedContributors = Array.from(contributors.entries()).sort((a, b) => {
+                    const aMinutes = TnMStorage.timeToMinutes(a[1].days, a[1].hours, a[1].minutes);
+                    const bMinutes = TnMStorage.timeToMinutes(b[1].days, b[1].hours, b[1].minutes);
+                    return bMinutes - aMinutes;
+                }).slice(0,3); // Ограничиваем до 3 участников
+
+                sortedContributors.forEach(([name, time]) => {
+                    // Normalize contributor time
+                    let { days, hours, minutes } = time;
+                    while (minutes >= 60) {
+                        minutes -= 60;
+                        hours += 1;
+                    }
+                    while (hours >= 8) {
+                        hours -= 8;
+                        days += 1;
+                    }
+
+                    const contributorDiv = document.createElement('div');
+                    contributorDiv.className = 'contributor-item';
+                    contributorDiv.innerHTML = `
+                        <div class="contributor-name">${name}</div>
+                        <div class="contributor-time">${TnMStorage.formatTime(days, hours, minutes)}</div>
+                    `;
+                    contributorsList.appendChild(contributorDiv);
+                });
+            }
+
+            showStats();
+
+        } catch (error) {
+            console.error('Error loading board stats:', error);
+            showError('Error loading statistics: ' + error.message);
+        }
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set default period
+        document.querySelector(`[data-period="${currentPeriod}"]`).classList.add('active');
+
+        loadBoardStats();
+
+        // Period selection
+        document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentPeriod = this.dataset.period;
+                loadBoardStats();
+            });
+        });
+
+        // Refresh button
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            loadBoardStats();
+        });
+    });
+</script>
+</body>
+</html>
