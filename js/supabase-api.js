@@ -14,15 +14,21 @@ const SupabaseAPI = {
     // Базовый HTTP клиент
     async request(endpoint, options = {}) {
         const url = `${this.SUPABASE_URL}/rest/v1/${endpoint}`;
+
+        // ИСПРАВЛЕНИЕ: Правильно объединяем заголовки
+        const defaultHeaders = {
+            'apikey': this.SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        };
+
         const config = {
+            ...options,
             headers: {
-                'apikey': this.SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=representation',
-                ...options.headers
-            },
-            ...options
+                ...defaultHeaders,
+                ...(options.headers || {})
+            }
         };
 
         const response = await fetch(url, config);
@@ -30,6 +36,11 @@ const SupabaseAPI = {
         if (!response.ok) {
             const error = await response.text();
             throw new Error(`Supabase API error: ${response.status} ${error}`);
+        }
+
+        // ИСПРАВЛЕНИЕ: Если return=minimal, возвращаем пустой объект
+        if (options.headers && options.headers['Prefer'] === 'return=minimal') {
+            return {};
         }
 
         return response.json();
@@ -221,11 +232,11 @@ const SupabaseAPI = {
                 entryData.trello_entry_id = entry.timestampId;
             }
 
-            // ОПТИМИЗАЦИЯ: Не возвращаем весь объект, если не нужно
-            const timeEntry = await SupabaseAPI.request('time_entries?select=id', {
+            // ОПТИМИЗАЦИЯ: Не возвращаем весь объект
+            await SupabaseAPI.request('time_entries', {
                 method: 'POST',
                 headers: {
-                    'Prefer': 'return=minimal' // Не возвращаем данные
+                    'Prefer': 'return=minimal'
                 },
                 body: JSON.stringify(entryData)
             });
@@ -235,7 +246,7 @@ const SupabaseAPI = {
             await SupabaseAPI.updateCardTotalTime(card.id);
             this.invalidateCardCache(boardId, trelloCardId);
 
-            return timeEntry[0] || { success: true };
+            return { success: true };
         } catch (error) {
             console.error('Error adding time entry:', error);
 
