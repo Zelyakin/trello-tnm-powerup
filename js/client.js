@@ -18,9 +18,8 @@ TrelloPowerUp.initialize({
         }];
     },
 
-    // Card badge - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
+    // Card badge
     'card-badges': function(t) {
-        // Используем TnMStorage.getCardData который автоматически работает с Supabase или Trello Storage
         return TnMStorage.getCardData(t)
             .then(function(data) {
                 if (!data) return [];
@@ -30,7 +29,6 @@ TrelloPowerUp.initialize({
 
                 if (!hasTime) return [];
 
-                // Use TnMStorage.formatTime function
                 return [{
                     text: TnMStorage.formatTime(data.days, data.hours, data.minutes),
                     color: 'blue'
@@ -42,7 +40,7 @@ TrelloPowerUp.initialize({
             });
     },
 
-    // Detailed badge when card is open - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ SUPABASE
+    // Detailed badge when card is open
     'card-detail-badges': function(t) {
         return TnMStorage.getCardData(t)
             .then(function(data) {
@@ -64,7 +62,6 @@ TrelloPowerUp.initialize({
                     }
                 }];
 
-                // Use TnMStorage.formatTime function
                 return [{
                     title: 'Time',
                     text: 'Time spent: ' + TnMStorage.formatTime(data.days, data.hours, data.minutes),
