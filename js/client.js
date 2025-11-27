@@ -18,9 +18,9 @@ TrelloPowerUp.initialize({
         }];
     },
 
-    // Card badge
+    // Card badge - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ (без time_entries!)
     'card-badges': function(t) {
-        return TnMStorage.getCardData(t)
+        return TnMStorage.getCardDataForBadge(t)
             .then(function(data) {
                 if (!data) return [];
 
@@ -42,7 +42,7 @@ TrelloPowerUp.initialize({
 
     // Detailed badge when card is open
     'card-detail-badges': function(t) {
-        return TnMStorage.getCardData(t)
+        return TnMStorage.getCardDataForBadge(t)
             .then(function(data) {
                 if (!data) return [];
 

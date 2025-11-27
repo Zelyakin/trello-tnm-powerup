@@ -1,19 +1,28 @@
 /* Utilities for working with Supabase storage */
 
 const TnMStorage = {
-    // Получить данные карточки из Supabase
+    // Получить данные карточки для БЕЙДЖА (без истории)
+    getCardDataForBadge: function(t) {
+        return t.card('id')
+            .then(card => {
+                return SupabaseAPI.getCardDataForBadge(card.id)
+                    .catch(error => {
+                        console.error('Error getting card badge data from Supabase:', error);
+                        return { days: 0, hours: 0, minutes: 0, history: [] };
+                    });
+            });
+    },
+
+    // Получить ПОЛНЫЕ данные карточки (с историей) для детального просмотра
     getCardData: function(t) {
-        return Promise.all([
-            t.board('id'),
-            t.card('id')
-        ]).then(([board, card]) => {
-            return SupabaseAPI.getCardData(board.id, card.id)
-                .catch(error => {
-                    console.error('Error getting card data from Supabase:', error);
-                    // Fallback на пустые данные
-                    return { days: 0, hours: 0, minutes: 0, history: [] };
-                });
-        });
+        return t.card('id')
+            .then(card => {
+                return SupabaseAPI.getCardDataFull(card.id)
+                    .catch(error => {
+                        console.error('Error getting card data from Supabase:', error);
+                        return { days: 0, hours: 0, minutes: 0, history: [] };
+                    });
+            });
     },
 
     // Добавить запись времени
@@ -30,7 +39,7 @@ const TnMStorage = {
                 workDate: workDate || new Date().toISOString(),
                 memberId: memberId,
                 memberName: memberName,
-                timestampId: Date.now() // ID для дедупликации
+                timestampId: Date.now()
             };
 
             return SupabaseAPI.addTimeEntry(board.id, card.id, entry);
