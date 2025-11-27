@@ -156,6 +156,9 @@
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
 
+  // Флаг для предотвращения множественных одновременных загрузок
+  let isLoading = false;
+
   function parseTimeString(timeStr) {
     const result = { days: 0, hours: 0, minutes: 0 };
 
@@ -227,57 +230,67 @@
     return date.toLocaleDateString();
   }
 
-  function loadData() {
-    TnMStorage.getCardData(t)
-            .then(function(data) {
-              document.getElementById('time-summary').innerHTML =
-                      `<p>Total time spent: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
+  async function loadData() {
+    // Защита от одновременных вызовов
+    if (isLoading) {
+      console.log('Already loading data, skipping...');
+      return;
+    }
 
-              const historyList = document.getElementById('history-list');
-              historyList.innerHTML = '';
+    isLoading = true;
 
-              if (data.history && data.history.length > 0) {
-                data.history.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+    try {
+      const data = await TnMStorage.getCardData(t);
 
-                data.history.forEach(function(record) {
-                  if (record.type === 'time') {
-                    const item = document.createElement('div');
-                    item.className = 'history-item';
-                    const recordId = record.id || record.date || record.created_at;
-                    item.dataset.recordId = recordId;
+      document.getElementById('time-summary').innerHTML =
+              `<p>Total time spent: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
 
-                    const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date || record.created_at);
-                    const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
+      const historyList = document.getElementById('history-list');
+      historyList.innerHTML = '';
 
-                    item.innerHTML = `
-                <div class="history-date">${displayDate}</div>
-                <div class="history-type">Time</div>
-                <div class="history-details">
-                  <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
-                </div>
-                <div class="history-actions">
-                  <button class="delete-record" data-record-id="${recordId}">Delete</button>
-                </div>
-              `;
+      if (data.history && data.history.length > 0) {
+        data.history.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
-                    historyList.appendChild(item);
-                  }
-                });
+        data.history.forEach(function(record) {
+          if (record.type === 'time') {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            const recordId = record.id || record.date || record.created_at;
+            item.dataset.recordId = recordId;
 
-                document.querySelectorAll('.delete-record').forEach(function(button) {
-                  button.addEventListener('click', function() {
-                    const recordId = this.dataset.recordId;
-                    showDeleteConfirmation(recordId);
-                  });
-                });
-              } else {
-                historyList.innerHTML = '<p>History is empty</p>';
-              }
-            })
-            .catch(function(error) {
-              console.error('Error loading data:', error);
-              document.getElementById('time-summary').innerHTML = '<p>Error loading data</p>';
-            });
+            const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date || record.created_at);
+            const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
+
+            item.innerHTML = `
+              <div class="history-date">${displayDate}</div>
+              <div class="history-type">Time</div>
+              <div class="history-details">
+                <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
+              </div>
+              <div class="history-actions">
+                <button class="delete-record" data-record-id="${recordId}">Delete</button>
+              </div>
+            `;
+
+            historyList.appendChild(item);
+          }
+        });
+
+        document.querySelectorAll('.delete-record').forEach(function(button) {
+          button.addEventListener('click', function() {
+            const recordId = this.dataset.recordId;
+            showDeleteConfirmation(recordId);
+          });
+        });
+      } else {
+        historyList.innerHTML = '<p>History is empty</p>';
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      document.getElementById('time-summary').innerHTML = '<p>Error loading data</p>';
+    } finally {
+      isLoading = false;
+    }
   }
 
   function showDeleteConfirmation(recordId) {
@@ -404,16 +417,16 @@
     document.getElementById('time-error').style.display = 'none';
   });
 
-  // Load data on opening
+  // Load data on opening - ОДИН РАЗ
   document.addEventListener('DOMContentLoaded', function() {
     initDateField();
-    loadData();
     loadBoardMembers();
+    loadData();  // ← Только один вызов при загрузке
   });
 
-  t.render(function() {
-    loadData();
-  });
+  // НЕ вызываем loadData при t.render, только если это не нужно
+  // t.render обычно вызывается при изменении размера/положения попапа
+  // Данные уже загружены в DOMContentLoaded
 </script>
 </body>
 </html>
