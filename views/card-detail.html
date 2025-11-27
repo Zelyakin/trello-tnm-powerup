@@ -383,17 +383,18 @@
               document.getElementById('time-input').value = '';
               document.getElementById('time-description').value = '';
 
-              // Update data
-              loadData();
+              // НЕ вызываем loadData() здесь - попап закроется и данные обновятся автоматически
+              // loadData(); ← УБРАЛИ
 
               // Notify Trello of badge updates
-              t.card('id')
-                      .then(function(card) {
-                        return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
-                      })
-                      .then(function() {
-                        t.closePopup();
-                      });
+              return t.card('id');
+            })
+            .then(function(card) {
+              return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
+            })
+            .then(function() {
+              // Закрываем попап сразу после обновления timestamp
+              t.closePopup();
             })
             .catch(function(error) {
               console.error('Error saving time:', error);

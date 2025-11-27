@@ -70,8 +70,7 @@ const SupabaseAPI = {
         }
     },
 
-    // НОВАЯ функция: получить или создать карточку с контекстом доски
-    // Используется только при создании новой карточки
+    // Получить или создать карточку с контекстом доски
     async ensureCardWithBoard(trelloBoardId, trelloCardId) {
         try {
             // Сначала пробуем найти существующую карточку
@@ -159,10 +158,10 @@ const SupabaseAPI = {
                     days: cards[0].total_days,
                     hours: cards[0].total_hours,
                     minutes: cards[0].total_minutes,
-                    history: [] // Пустая история для бейджа
+                    history: []
                 };
             } else {
-                // Карточки еще нет в Supabase - это норма для новых карточек
+                // Карточки еще нет в Supabase
                 cardData = {
                     days: 0,
                     hours: 0,
@@ -203,6 +202,7 @@ const SupabaseAPI = {
 
             if (cards.length === 0) {
                 // Карточки нет - вернем пустые данные
+                console.log(`Card ${trelloCardId} not found in Supabase`);
                 return { days: 0, hours: 0, minutes: 0, history: [] };
             }
 
@@ -258,7 +258,7 @@ const SupabaseAPI = {
         try {
             console.log('Adding time entry to Supabase:', { boardId, trelloCardId, entry });
 
-            // Получаем или создаем карточку (здесь нужен board для создания)
+            // Получаем или создаем карточку
             const card = await this.ensureCardWithBoard(boardId, trelloCardId);
 
             const workDate = entry.workDate ? entry.workDate.split('T')[0] : new Date().toISOString().split('T')[0];
@@ -300,6 +300,7 @@ const SupabaseAPI = {
 
             console.log(`New entry added successfully for card ${card.id}`);
 
+            // ВАЖНО: сначала обновляем агрегаты, потом инвалидируем кеш
             await SupabaseAPI.updateCardTotalTime(card.id);
             this.invalidateCardCache(trelloCardId);
 
@@ -388,6 +389,7 @@ const SupabaseAPI = {
                 }
             });
 
+            // ВАЖНО: сначала обновляем агрегаты, потом инвалидируем кеш
             await SupabaseAPI.updateCardTotalTime(card.id);
             this.invalidateCardCache(trelloCardId);
 
