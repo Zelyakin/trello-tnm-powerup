@@ -6,7 +6,6 @@
     <link rel="stylesheet" href="https://p.trellocdn.com/power-up.min.css">
     <link rel="stylesheet" href="../css/style.css">
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
-    <!-- Existing styles -->
     <style>
         /* Additional styles for card back */
         .back-section {
@@ -99,123 +98,141 @@
 <script>
     const t = TrelloPowerUp.iframe();
 
+    // Флаг для предотвращения множественных одновременных загрузок
+    let isLoading = false;
+    let lastUpdateTimestamp = 0;
+
     // Date formatting function
     function formatDate(dateString) {
         const date = new Date(dateString);
         return date.toLocaleDateString();
     }
 
-    // Load data on opening
-    document.addEventListener('DOMContentLoaded', function() {
-        loadData();
-
-        // Handler for opening detailed information
-        document.getElementById('open-details').addEventListener('click', function(e) {
-            e.preventDefault();
-            t.navigate({
-                url: t.signUrl('./card-detail.html'),
-                context: 'popup',
-                height: 400
+    // Handler for opening detailed information
+    function setupDetailLink() {
+        const detailLink = document.getElementById('open-details');
+        if (detailLink) {
+            detailLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                t.popup({
+                    title: 'Time Tracking',
+                    url: t.signUrl('./card-detail.html'),
+                    height: 400
+                });
             });
-        });
-    });
-
-    // Handle data changes
-    t.render(function() {
-        loadData();
-    });
-
-    // Listen for external data updates (e.g. after deleting a record)
-    t.get('card', 'shared', 'tnm-lastUpdate', 0)
-        .then(function(lastUpdate) {
-            // Save current value for later comparison
-            window.lastUpdateTimestamp = lastUpdate;
-
-            // Set interval to check for updates
-            setInterval(function() {
-                t.get('card', 'shared', 'tnm-lastUpdate', 0)
-                    .then(function(newLastUpdate) {
-                        if (newLastUpdate !== window.lastUpdateTimestamp) {
-                            window.lastUpdateTimestamp = newLastUpdate;
-                            loadData();
-                        }
-                    });
-            }, 2000); // Check every 2 seconds
-        });
-
-    // Load data
-    function loadData() {
-        TnMStorage.getCardData(t)
-            .then(function(data) {
-                const timeEntriesList = document.getElementById('time-entries-list');
-
-                // Filter only time entries
-                const timeEntries = data.history ? data.history.filter(entry => entry.type === 'time') : [];
-
-                if (timeEntries.length > 0) {
-                    // Sort by date (newest to oldest)
-                    timeEntries.sort((a, b) => new Date(b.workDate || b.date || b.created_at) - new Date(a.workDate || a.date || a.created_at));
-
-                    let entriesHTML = '';
-
-                    // Limit number of entries to 5 for compactness
-                    const displayEntries = timeEntries.slice(0, 5);
-
-                    // Display each entry
-                    displayEntries.forEach(function(entry) {
-                        // Use work date if available
-                        const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date || entry.created_at);
-
-                        entriesHTML += `
-                <div class="tnm-time-entry">
-                  <div class="tnm-time-header">
-                    <div>
-                      <span class="tnm-time-date">${displayDate}</span>
-                      <span class="tnm-time-user">${entry.memberName || entry.member_name || 'User'}</span>
-                    </div>
-                    <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
-                  </div>
-                  ${entry.description ? `<div class="tnm-time-description">${entry.description}</div>` : ''}
-                </div>
-              `;
-                    });
-
-                    // Add information about hidden entries, if any
-                    if (timeEntries.length > 5) {
-                        entriesHTML += `
-                <div class="tnm-empty-state">
-                  ...and ${timeEntries.length - 5} more ${getNounPluralForm(timeEntries.length - 5, 'entry', 'entries', 'entries')}
-                </div>
-              `;
-                    }
-
-                    // Add total row
-                    entriesHTML += `
-              <div class="tnm-time-total">
-                <div>TOTAL:</div>
-                <div>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</div>
-              </div>
-            `;
-
-                    timeEntriesList.innerHTML = entriesHTML;
-                } else {
-                    timeEntriesList.innerHTML = '<div class="tnm-empty-state">No time tracking records</div>';
-                }
-            })
-            .catch(function(err) {
-                console.error('Error loading data:', err);
-                document.getElementById('time-entries-list').innerHTML =
-                    '<div class="tnm-empty-state">Error loading data</div>';
-            });
-    }
-
-    // Function for proper noun pluralization
-    function getNounPluralForm(number, one, two, five) {
-        if (number === 1) {
-            return one;
         }
-        return two;
     }
+
+    // Load data with protection from simultaneous calls
+    async function loadData() {
+        // Защита от одновременных вызовов
+        if (isLoading) {
+            console.log('Already loading data, skipping...');
+            return;
+        }
+
+        isLoading = true;
+
+        try {
+            const data = await TnMStorage.getCardData(t);
+            const timeEntriesList = document.getElementById('time-entries-list');
+
+            // Filter only time entries
+            const timeEntries = data.history ? data.history.filter(entry => entry.type === 'time') : [];
+
+            if (timeEntries.length > 0) {
+                // Sort by date (newest to oldest)
+                timeEntries.sort((a, b) => new Date(b.workDate || b.date || b.created_at) - new Date(a.workDate || a.date || a.created_at));
+
+                let entriesHTML = '';
+
+                // Limit number of entries to 5 for compactness
+                const displayEntries = timeEntries.slice(0, 5);
+
+                // Display each entry
+                displayEntries.forEach(function(entry) {
+                    // Use work date if available
+                    const displayDate = entry.workDate ? formatDate(entry.workDate) : formatDate(entry.date || entry.created_at);
+
+                    entriesHTML += `
+                        <div class="tnm-time-entry">
+                            <div class="tnm-time-header">
+                                <div>
+                                    <span class="tnm-time-date">${displayDate}</span>
+                                    <span class="tnm-time-user">${entry.memberName || entry.member_name || 'User'}</span>
+                                </div>
+                                <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
+                            </div>
+                            ${entry.description ? `<div class="tnm-time-description">${entry.description}</div>` : ''}
+                        </div>
+                    `;
+                });
+
+                // Add information about hidden entries, if any
+                if (timeEntries.length > 5) {
+                    entriesHTML += `
+                        <div class="tnm-empty-state">
+                            ...and ${timeEntries.length - 5} more ${timeEntries.length - 5 === 1 ? 'entry' : 'entries'}
+                        </div>
+                    `;
+                }
+
+                // Add total row
+                entriesHTML += `
+                    <div class="tnm-time-total">
+                        <div>TOTAL:</div>
+                        <div>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</div>
+                    </div>
+                `;
+
+                timeEntriesList.innerHTML = entriesHTML;
+            } else {
+                timeEntriesList.innerHTML = '<div class="tnm-empty-state">No time tracking records</div>';
+            }
+        } catch (err) {
+            console.error('Error loading data:', err);
+            document.getElementById('time-entries-list').innerHTML =
+                '<div class="tnm-empty-state">Error loading data</div>';
+        } finally {
+            isLoading = false;
+        }
+    }
+
+    // Check for updates periodically
+    async function checkForUpdates() {
+        try {
+            const newLastUpdate = await t.get('card', 'shared', 'tnm-lastUpdate', 0);
+
+            if (newLastUpdate !== lastUpdateTimestamp && newLastUpdate > 0) {
+                console.log('Data updated, reloading...');
+                lastUpdateTimestamp = newLastUpdate;
+                await loadData();
+            }
+        } catch (error) {
+            console.error('Error checking for updates:', error);
+        }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+        setupDetailLink();
+
+        // Initial load
+        await loadData();
+
+        // Get initial timestamp
+        lastUpdateTimestamp = await t.get('card', 'shared', 'tnm-lastUpdate', 0);
+
+        // Check for updates every 5 seconds (was 2 seconds)
+        setInterval(checkForUpdates, 5000);
+    });
+
+    // Handle Trello's render events
+    // Но НЕ загружаем данные повторно, если уже загрузили
+    t.render(function() {
+        // Просто обновляем ссылку, если DOM перестроился
+        setupDetailLink();
+    });
 </script>
 </body>
 </html>
