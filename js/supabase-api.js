@@ -510,10 +510,11 @@ const SupabaseAPI = {
                 contributorsMap.set(memberName, contributorsMap.get(memberName) + (entry.time_minutes || 0));
             });
 
-            // Сортируем contributors по времени (descending)
+            // Сортируем contributors по времени (descending) и ограничиваем топ-3
             const contributors = Array.from(contributorsMap.entries())
-                .map(([name, minutes]) => ({ name, minutes }))
-                .sort((a, b) => b.minutes - a.minutes);
+                .map(([name, minutes]) => ({ memberName: name, totalMinutes: minutes }))
+                .sort((a, b) => b.totalMinutes - a.totalMinutes)
+                .slice(0, 3);
 
             return {
                 totalMinutes: totalMinutes,
