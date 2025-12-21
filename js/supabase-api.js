@@ -5,6 +5,7 @@ const SupabaseAPI = {
 
     // Кеш с TTL
     _cardDataCache: new Map(),
+    _lastSettingsUpdate: 0, // Timestamp последнего обновления настроек
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
 
@@ -44,6 +45,23 @@ const SupabaseAPI = {
     // Проверка актуальности кеша
     isCacheValid(timestamp, ttl) {
         return Date.now() - timestamp < ttl;
+    },
+
+    // Проверка обновления настроек и очистка кеша при необходимости
+    async checkSettingsUpdate(t) {
+        try {
+            if (!t || !t.get) return; // Защита на случай если t не передан
+
+            const settingsTimestamp = await t.get('board', 'shared', 'tnm-settings-updated', 0);
+
+            if (settingsTimestamp > this._lastSettingsUpdate) {
+                console.log('Settings updated, clearing cache...');
+                this._lastSettingsUpdate = settingsTimestamp;
+                this.clearCache();
+            }
+        } catch (error) {
+            console.error('Error checking settings update:', error);
+        }
     },
 
     // Получить или создать карточку (БЕЗ board_id!)

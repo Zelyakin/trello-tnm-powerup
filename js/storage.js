@@ -5,7 +5,8 @@ const TnMStorage = {
     getCardDataForBadge: function(t) {
         return Promise.all([
             t.card('id'),
-            t.board('id')
+            t.board('id'),
+            SupabaseAPI.checkSettingsUpdate(t) // Проверяем обновление настроек
         ]).then(([card, board]) => {
             return Promise.all([
                 SupabaseAPI.getCardDataForBadge(card.id),
@@ -24,7 +25,8 @@ const TnMStorage = {
     getCardData: function(t) {
         return Promise.all([
             t.card('id'),
-            t.board('id')
+            t.board('id'),
+            SupabaseAPI.checkSettingsUpdate(t) // Проверяем обновление настроек
         ]).then(([card, board]) => {
             return Promise.all([
                 SupabaseAPI.getCardDataFull(card.id),
