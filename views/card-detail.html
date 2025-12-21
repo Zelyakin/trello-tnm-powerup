@@ -241,9 +241,10 @@
 
     try {
       const data = await TnMStorage.getCardData(t);
+      const hoursPerDay = data.hoursPerDay || 8;
 
       document.getElementById('time-summary').innerHTML =
-              `<p>Total time spent: <strong>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</strong></p>`;
+              `<p>Total time spent: <strong>${TnMStorage.formatTime(data.timeMinutes || 0, hoursPerDay)}</strong></p>`;
 
       const historyList = document.getElementById('history-list');
       historyList.innerHTML = '';
@@ -259,7 +260,7 @@
             item.dataset.recordId = recordId;
 
             const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date || record.created_at);
-            const timeStr = TnMStorage.formatTime(record.days || 0, record.hours || 0, record.minutes || 0);
+            const timeStr = TnMStorage.formatTime(record.timeMinutes || 0, hoursPerDay);
 
             item.innerHTML = `
               <div class="history-date">${displayDate}</div>

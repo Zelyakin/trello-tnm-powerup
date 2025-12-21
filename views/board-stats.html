@@ -270,141 +270,43 @@
 
             const { startDate, endDate } = getPeriodDates(currentPeriod);
 
-            let totalDays = 0;
-            let totalHours = 0;
-            let totalMinutes = 0;
-            let totalEntries = 0;
-            let activeCards = new Set();
-            const contributors = new Map();
+            // Get board ID and settings
+            const board = await t.board('id');
+            const settings = await SupabaseAPI.getBoardSettings(board.id);
+            const hoursPerDay = settings.hours_per_day || 8;
 
-            if (TnMStorage.USE_SUPABASE) {
-                // Get data from Supabase
-                const boardId = await t.board('id').then(board => board.id);
-                const exportData = await TnMStorage.getAllCardDataForExport(
-                    t,
-                    formatDateForAPI(startDate),
-                    formatDateForAPI(endDate)
-                );
-
-                // Get card names
-                const allCards = await t.cards('all');
-                const cardNameMap = new Map();
-                allCards.forEach(card => cardNameMap.set(card.id, card.name));
-
-                exportData.forEach(({ cardId, timeEntries }) => {
-                    if (timeEntries && timeEntries.length > 0) {
-                        activeCards.add(cardId);
-
-                        timeEntries.forEach(entry => {
-                            totalDays += entry.days || 0;
-                            totalHours += entry.hours || 0;
-                            totalMinutes += entry.minutes || 0;
-                            totalEntries++;
-
-                            // Count by contributor
-                            const memberName = entry.member_name || 'Unknown';
-                            if (!contributors.has(memberName)) {
-                                contributors.set(memberName, { days: 0, hours: 0, minutes: 0 });
-                            }
-                            const contrib = contributors.get(memberName);
-                            contrib.days += entry.days || 0;
-                            contrib.hours += entry.hours || 0;
-                            contrib.minutes += entry.minutes || 0;
-                        });
-                    }
-                });
-            } else {
-                // Fallback to Trello Storage
-                const cardDataList = await TnMStorage.getAllCardDataForExport(t);
-
-                cardDataList.forEach(({ card, data }) => {
-                    if (data && data.history && data.history.length > 0) {
-                        const filteredHistory = data.history.filter(entry => {
-                            if (entry.type !== 'time') return false;
-                            const dateToCheck = entry.workDate || entry.date;
-                            return isDateInRange(dateToCheck, startDate, endDate);
-                        });
-
-                        if (filteredHistory.length > 0) {
-                            activeCards.add(card.id);
-
-                            filteredHistory.forEach(entry => {
-                                totalDays += entry.days || 0;
-                                totalHours += entry.hours || 0;
-                                totalMinutes += entry.minutes || 0;
-                                totalEntries++;
-
-                                // Count by contributor
-                                const memberName = entry.memberName || 'Unknown';
-                                if (!contributors.has(memberName)) {
-                                    contributors.set(memberName, { days: 0, hours: 0, minutes: 0 });
-                                }
-                                const contrib = contributors.get(memberName);
-                                contrib.days += entry.days || 0;
-                                contrib.hours += entry.hours || 0;
-                                contrib.minutes += entry.minutes || 0;
-                            });
-                        }
-                    }
-                });
-            }
-
-            // Normalize total time
-            while (totalMinutes >= 60) {
-                totalMinutes -= 60;
-                totalHours += 1;
-            }
-            while (totalHours >= 8) {
-                totalHours -= 8;
-                totalDays += 1;
-            }
+            // Use optimized getBoardStats method - makes only 2-3 requests instead of N requests
+            const stats = await SupabaseAPI.getBoardStats(
+                board.id,
+                formatDateForAPI(startDate),
+                formatDateForAPI(endDate)
+            );
 
             // Calculate average per day
             const periodDays = calculateDaysBetween(startDate, endDate);
-            const totalMinutesForAvg = (totalDays * 8 * 60) + (totalHours * 60) + totalMinutes;
-            const avgMinutesPerDay = totalMinutesForAvg / periodDays;
-            const avgDays = Math.floor(avgMinutesPerDay / (8 * 60));
-            const avgHours = Math.floor((avgMinutesPerDay % (8 * 60)) / 60);
-            const avgMinutes = Math.floor(avgMinutesPerDay % 60);
+            const avgMinutesPerDay = Math.floor(stats.totalMinutes / periodDays);
 
             // Update UI
             document.getElementById('period-display').textContent = getPeriodDisplayName(currentPeriod);
-            document.getElementById('total-time').textContent = TnMStorage.formatTime(totalDays, totalHours, totalMinutes);
-            document.getElementById('total-entries').textContent = totalEntries;
-            document.getElementById('active-cards').textContent = activeCards.size;
-            document.getElementById('avg-per-day').textContent = TnMStorage.formatTime(avgDays, avgHours, avgMinutes);
+            document.getElementById('total-time').textContent = TnMStorage.formatTime(stats.totalMinutes, hoursPerDay);
+            document.getElementById('total-entries').textContent = stats.totalEntries;
+            document.getElementById('active-cards').textContent = stats.activeCards;
+            document.getElementById('avg-per-day').textContent = TnMStorage.formatTime(avgMinutesPerDay, hoursPerDay);
 
             // Render contributors
             const contributorsList = document.getElementById('contributors-list');
             contributorsList.innerHTML = '';
 
-            if (contributors.size === 0) {
+            if (stats.contributors.length === 0) {
                 contributorsList.innerHTML = '<div style="text-align: center; color: #5E6C84; font-style: italic;">No data for selected period</div>';
             } else {
-                // Sort contributors by total time (convert to minutes for comparison)
-                const sortedContributors = Array.from(contributors.entries()).sort((a, b) => {
-                    const aMinutes = TnMStorage.timeToMinutes(a[1].days, a[1].hours, a[1].minutes);
-                    const bMinutes = TnMStorage.timeToMinutes(b[1].days, b[1].hours, b[1].minutes);
-                    return bMinutes - aMinutes;
-                }).slice(0,3); // Ограничиваем до 3 участников
-
-                sortedContributors.forEach(([name, time]) => {
-                    // Normalize contributor time
-                    let { days, hours, minutes } = time;
-                    while (minutes >= 60) {
-                        minutes -= 60;
-                        hours += 1;
-                    }
-                    while (hours >= 8) {
-                        hours -= 8;
-                        days += 1;
-                    }
-
+                // contributors array is already sorted and limited to top 3 by the API
+                stats.contributors.forEach(({ memberName, totalMinutes }) => {
                     const contributorDiv = document.createElement('div');
                     contributorDiv.className = 'contributor-item';
                     contributorDiv.innerHTML = `
-                        <div class="contributor-name">${name}</div>
-                        <div class="contributor-time">${TnMStorage.formatTime(days, hours, minutes)}</div>
+                        <div class="contributor-name">${memberName}</div>
+                        <div class="contributor-time">${TnMStorage.formatTime(totalMinutes, hoursPerDay)}</div>
                     `;
                     contributorsList.appendChild(contributorDiv);
                 });

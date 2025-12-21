@@ -147,6 +147,25 @@
 <div>
   <h2>T&M Power-Up Settings</h2>
 
+  <h3>Display Settings</h3>
+  <p>Choose how time is displayed:</p>
+
+  <div class="form-group">
+    <label for="hours-per-day">Hours per day:</label>
+    <select id="hours-per-day" style="width: 100%; padding: 8px; margin-bottom: 8px;">
+      <option value="8">8 hours (work day)</option>
+      <option value="24">24 hours (calendar day)</option>
+    </select>
+    <p class="info-text">This affects how days are calculated. Example: 16 hours = 2 days (8h mode) or 0d 16h (24h mode)</p>
+  </div>
+
+  <div class="button-container">
+    <button id="save-settings-btn" class="mod-primary">Save Settings</button>
+  </div>
+
+  <div class="section-separator"></div>
+
+  <h3>Cache Management</h3>
   <p>Manage Power-Up cache and data:</p>
 
   <div class="button-container">
@@ -188,9 +207,58 @@
   </div>
 </div>
 
+<script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script>
   const t = TrelloPowerUp.iframe();
+
+  // Load current settings on page load
+  async function loadSettings() {
+    try {
+      const settings = await TnMStorage.getBoardSettings(t);
+      const hoursPerDay = settings.hours_per_day || 8;
+      document.getElementById('hours-per-day').value = hoursPerDay;
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }
+
+  // Save settings handler
+  document.getElementById('save-settings-btn').addEventListener('click', async function() {
+    try {
+      const hoursPerDay = parseInt(document.getElementById('hours-per-day').value);
+
+      // Show status message
+      document.getElementById('status-message').style.display = 'block';
+      document.getElementById('status-message').textContent = 'Saving settings...';
+
+      await TnMStorage.updateBoardSettings(t, hoursPerDay);
+
+      // Clear cache to refresh display
+      if (window.SupabaseAPI) {
+        window.SupabaseAPI.clearCache();
+      }
+
+      // Notify Trello to refresh all badges by updating a timestamp
+      await t.set('board', 'shared', 'tnm-settings-updated', Date.now());
+
+      document.getElementById('status-message').textContent = 'Settings saved successfully! Refreshing...';
+
+      // Close popup and reload page after 1 second
+      setTimeout(() => {
+        t.closePopup();
+        window.location.reload(true);
+      }, 1000);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      document.getElementById('error-message').style.display = 'block';
+      document.getElementById('error-message').textContent = 'Error saving settings: ' + error.message;
+
+      setTimeout(() => {
+        document.getElementById('error-message').style.display = 'none';
+      }, 3000);
+    }
+  });
 
   // Handler for storage statistics button
   document.getElementById('storage-stats-btn').addEventListener('click', function() {
@@ -282,10 +350,11 @@
             });
   });
 
-  // Hide messages on load
+  // Hide messages on load and load settings
   document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('status-message').style.display = 'none';
     document.getElementById('error-message').style.display = 'none';
+    loadSettings(); // Load current board settings
   });
 </script>
 </body>

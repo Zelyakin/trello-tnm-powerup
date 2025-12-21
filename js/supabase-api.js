@@ -5,6 +5,7 @@ const SupabaseAPI = {
 
     // Кеш с TTL
     _cardDataCache: new Map(),
+    _lastSettingsUpdate: 0, // Timestamp последнего обновления настроек
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
 
@@ -44,6 +45,23 @@ const SupabaseAPI = {
     // Проверка актуальности кеша
     isCacheValid(timestamp, ttl) {
         return Date.now() - timestamp < ttl;
+    },
+
+    // Проверка обновления настроек и очистка кеша при необходимости
+    async checkSettingsUpdate(t) {
+        try {
+            if (!t || !t.get) return; // Защита на случай если t не передан
+
+            const settingsTimestamp = await t.get('board', 'shared', 'tnm-settings-updated', 0);
+
+            if (settingsTimestamp > this._lastSettingsUpdate) {
+                console.log('Settings updated, clearing cache...');
+                this._lastSettingsUpdate = settingsTimestamp;
+                this.clearCache();
+            }
+        } catch (error) {
+            console.error('Error checking settings update:', error);
+        }
     },
 
     // Получить или создать карточку (БЕЗ board_id!)
@@ -109,9 +127,7 @@ const SupabaseAPI = {
                     body: JSON.stringify({
                         trello_card_id: trelloCardId,
                         board_id: boardId,
-                        total_days: 0,
-                        total_hours: 0,
-                        total_minutes: 0
+                        time_minutes: 0
                     })
                 });
                 return newCards[0];
@@ -147,25 +163,21 @@ const SupabaseAPI = {
 
             console.log(`Fetching fresh badge data for ${trelloCardId}`);
 
-            // Запрашиваем ТОЛЬКО агрегаты, БЕЗ time_entries!
+            // Запрашиваем ТОЛЬКО time_minutes, БЕЗ time_entries!
             const cards = await SupabaseAPI.request(
-                `cards?select=total_days,total_hours,total_minutes&trello_card_id=eq.${trelloCardId}`
+                `cards?select=time_minutes&trello_card_id=eq.${trelloCardId}`
             );
 
             let cardData;
             if (cards.length > 0) {
                 cardData = {
-                    days: cards[0].total_days,
-                    hours: cards[0].total_hours,
-                    minutes: cards[0].total_minutes,
+                    timeMinutes: cards[0].time_minutes || 0,
                     history: []
                 };
             } else {
                 // Карточки еще нет в Supabase
                 cardData = {
-                    days: 0,
-                    hours: 0,
-                    minutes: 0,
+                    timeMinutes: 0,
                     history: []
                 };
             }
@@ -178,7 +190,7 @@ const SupabaseAPI = {
             return cardData;
         } catch (error) {
             console.error('Error getting card data for badge:', error);
-            return { days: 0, hours: 0, minutes: 0, history: [] };
+            return { timeMinutes: 0, history: [] };
         }
     },
 
@@ -197,28 +209,26 @@ const SupabaseAPI = {
 
             // Ищем карточку по trello_card_id
             const cards = await SupabaseAPI.request(
-                `cards?select=id,trello_card_id,total_days,total_hours,total_minutes&trello_card_id=eq.${trelloCardId}`
+                `cards?select=id,trello_card_id,time_minutes&trello_card_id=eq.${trelloCardId}`
             );
 
             if (cards.length === 0) {
                 // Карточки нет - вернем пустые данные
                 console.log(`Card ${trelloCardId} not found in Supabase`);
-                return { days: 0, hours: 0, minutes: 0, history: [] };
+                return { timeMinutes: 0, history: [] };
             }
 
             const card = cards[0];
 
             // Теперь получаем историю
             const timeEntries = await SupabaseAPI.request(
-                `time_entries?select=days,hours,minutes,description,work_date,trello_member_id,member_name,trello_entry_id,created_at&card_id=eq.${card.id}&order=created_at.desc`
+                `time_entries?select=time_minutes,description,work_date,trello_member_id,member_name,trello_entry_id,created_at&card_id=eq.${card.id}&order=created_at.desc`
             );
 
             const history = timeEntries.map(entry => ({
                 id: entry.created_at,
                 type: 'time',
-                days: entry.days,
-                hours: entry.hours,
-                minutes: entry.minutes,
+                timeMinutes: entry.time_minutes || 0,
                 description: entry.description,
                 date: entry.created_at,
                 workDate: entry.work_date + 'T00:00:00.000Z',
@@ -228,9 +238,7 @@ const SupabaseAPI = {
             }));
 
             const cardData = {
-                days: card.total_days,
-                hours: card.total_hours,
-                minutes: card.total_minutes,
+                timeMinutes: card.time_minutes || 0,
                 history: history
             };
 
@@ -242,7 +250,7 @@ const SupabaseAPI = {
             return cardData;
         } catch (error) {
             console.error('Error getting full card data:', error);
-            return { days: 0, hours: 0, minutes: 0, history: [] };
+            return { timeMinutes: 0, history: [] };
         }
     },
 
@@ -279,9 +287,7 @@ const SupabaseAPI = {
                 card_id: card.id,
                 trello_member_id: entry.memberId,
                 member_name: entry.memberName,
-                days: entry.days || 0,
-                hours: entry.hours || 0,
-                minutes: entry.minutes || 0,
+                time_minutes: entry.timeMinutes || 0,
                 description: entry.description || '',
                 work_date: workDate
             };
@@ -323,28 +329,15 @@ const SupabaseAPI = {
     async updateCardTotalTime(cardId) {
         try {
             const entries = await SupabaseAPI.request(
-                `time_entries?select=days,hours,minutes&card_id=eq.${cardId}`
+                `time_entries?select=time_minutes&card_id=eq.${cardId}`
             );
 
-            let totalDays = 0;
-            let totalHours = 0;
+            // Просто суммируем минуты - нормализация происходит на клиенте
             let totalMinutes = 0;
 
             entries.forEach(entry => {
-                totalDays += entry.days || 0;
-                totalHours += entry.hours || 0;
-                totalMinutes += entry.minutes || 0;
+                totalMinutes += entry.time_minutes || 0;
             });
-
-            while (totalMinutes >= 60) {
-                totalMinutes -= 60;
-                totalHours += 1;
-            }
-
-            while (totalHours >= 8) {
-                totalHours -= 8;
-                totalDays += 1;
-            }
 
             await SupabaseAPI.request(`cards?id=eq.${cardId}`, {
                 method: 'PATCH',
@@ -352,14 +345,12 @@ const SupabaseAPI = {
                     'Prefer': 'return=minimal'
                 },
                 body: JSON.stringify({
-                    total_days: totalDays,
-                    total_hours: totalHours,
-                    total_minutes: totalMinutes,
+                    time_minutes: totalMinutes,
                     updated_at: new Date().toISOString()
                 })
             });
 
-            return { totalDays, totalHours, totalMinutes };
+            return { totalMinutes };
         } catch (error) {
             console.error('Error updating card total time:', error);
             throw error;
@@ -425,7 +416,7 @@ const SupabaseAPI = {
             const exportData = [];
 
             for (const card of cards) {
-                let timeEntriesQuery = `time_entries?select=days,hours,minutes,description,work_date,member_name&card_id=eq.${card.id}`;
+                let timeEntriesQuery = `time_entries?select=time_minutes,description,work_date,member_name&card_id=eq.${card.id}`;
 
                 if (startDate) {
                     timeEntriesQuery += `&work_date=gte.${startDate}`;
@@ -452,10 +443,213 @@ const SupabaseAPI = {
         }
     },
 
+    // Получение статистики доски (оптимизированный запрос)
+    async getBoardStats(trelloBoardId, startDate, endDate) {
+        try {
+            console.log('Getting board stats from Supabase:', { trelloBoardId, startDate, endDate });
+
+            // Находим доску
+            const boards = await SupabaseAPI.request(
+                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+            );
+
+            if (boards.length === 0) {
+                console.log('Board not found in Supabase');
+                return {
+                    totalMinutes: 0,
+                    totalEntries: 0,
+                    activeCards: 0,
+                    contributors: []
+                };
+            }
+
+            const boardId = boards[0].id;
+
+            // Получаем все карточки доски
+            const cards = await SupabaseAPI.request(
+                `cards?select=id,trello_card_id&board_id=eq.${boardId}`
+            );
+
+            if (cards.length === 0) {
+                return {
+                    totalMinutes: 0,
+                    totalEntries: 0,
+                    activeCards: 0,
+                    contributors: []
+                };
+            }
+
+            const cardIds = cards.map(c => c.id);
+
+            // Строим запрос для получения всех записей за период
+            let query = `time_entries?select=time_minutes,member_name,card_id&card_id=in.(${cardIds.join(',')})`;
+
+            if (startDate) {
+                query += `&work_date=gte.${startDate}`;
+            }
+
+            if (endDate) {
+                query += `&work_date=lte.${endDate}`;
+            }
+
+            const timeEntries = await SupabaseAPI.request(query);
+
+            // Агрегируем данные на клиенте (можно было бы использовать PostgreSQL functions для этого)
+            let totalMinutes = 0;
+            const activeCardsSet = new Set();
+            const contributorsMap = new Map();
+
+            timeEntries.forEach(entry => {
+                totalMinutes += entry.time_minutes || 0;
+                activeCardsSet.add(entry.card_id);
+
+                const memberName = entry.member_name || 'Unknown';
+                if (!contributorsMap.has(memberName)) {
+                    contributorsMap.set(memberName, 0);
+                }
+                contributorsMap.set(memberName, contributorsMap.get(memberName) + (entry.time_minutes || 0));
+            });
+
+            // Сортируем contributors по времени (descending) и ограничиваем топ-3
+            const contributors = Array.from(contributorsMap.entries())
+                .map(([name, minutes]) => ({ memberName: name, totalMinutes: minutes }))
+                .sort((a, b) => b.totalMinutes - a.totalMinutes)
+                .slice(0, 3);
+
+            return {
+                totalMinutes: totalMinutes,
+                totalEntries: timeEntries.length,
+                activeCards: activeCardsSet.size,
+                contributors: contributors
+            };
+        } catch (error) {
+            console.error('Error getting board stats:', error);
+            throw error;
+        }
+    },
+
     // Очистка кеша
     clearCache() {
         this._cardDataCache.clear();
         console.log('Supabase API cache cleared');
+    },
+
+    // Получение настроек доски
+    async getBoardSettings(trelloBoardId) {
+        try {
+            // Сначала находим board по trello_board_id
+            const boards = await SupabaseAPI.request(
+                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+            );
+
+            if (boards.length === 0) {
+                // Доски еще нет - создадим с дефолтными настройками
+                const newBoards = await SupabaseAPI.request('boards', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        trello_board_id: trelloBoardId
+                    })
+                });
+
+                const boardId = newBoards[0].id;
+
+                // Создаем дефолтные настройки
+                const newSettings = await SupabaseAPI.request('board_settings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        board_id: boardId,
+                        hours_per_day: 8
+                    })
+                });
+
+                return {
+                    hours_per_day: newSettings[0].hours_per_day
+                };
+            }
+
+            const boardId = boards[0].id;
+
+            // Ищем настройки
+            const settings = await SupabaseAPI.request(
+                `board_settings?select=hours_per_day&board_id=eq.${boardId}`
+            );
+
+            if (settings.length === 0) {
+                // Настроек нет - создаем дефолтные
+                const newSettings = await SupabaseAPI.request('board_settings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        board_id: boardId,
+                        hours_per_day: 8
+                    })
+                });
+
+                return {
+                    hours_per_day: newSettings[0].hours_per_day
+                };
+            }
+
+            return {
+                hours_per_day: settings[0].hours_per_day
+            };
+        } catch (error) {
+            console.error('Error getting board settings:', error);
+            // В случае ошибки возвращаем дефолтные настройки
+            return { hours_per_day: 8 };
+        }
+    },
+
+    // Обновление настроек доски
+    async updateBoardSettings(trelloBoardId, hoursPerDay) {
+        try {
+            // Сначала находим board по trello_board_id
+            const boards = await SupabaseAPI.request(
+                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+            );
+
+            if (boards.length === 0) {
+                throw new Error('Board not found');
+            }
+
+            const boardId = boards[0].id;
+
+            // Обновляем или создаем настройки
+            const existingSettings = await SupabaseAPI.request(
+                `board_settings?select=id&board_id=eq.${boardId}`
+            );
+
+            if (existingSettings.length === 0) {
+                // Создаем новые настройки
+                await SupabaseAPI.request('board_settings', {
+                    method: 'POST',
+                    headers: {
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify({
+                        board_id: boardId,
+                        hours_per_day: hoursPerDay
+                    })
+                });
+            } else {
+                // Обновляем существующие
+                await SupabaseAPI.request(`board_settings?board_id=eq.${boardId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify({
+                        hours_per_day: hoursPerDay,
+                        updated_at: new Date().toISOString()
+                    })
+                });
+            }
+
+            console.log(`Board settings updated: hours_per_day = ${hoursPerDay}`);
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating board settings:', error);
+            throw error;
+        }
     }
 };
 
