@@ -14,8 +14,9 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 - 🏷️ Display badges with time spent on cards
 - 📋 Display time summary on the back of the card
 - 🔄 Cache clearing and Power-Up refresh
-- 📈 Board statistics with period filtering
-- ⚡ Optimized API calls for fast loading
+- 📈 Board statistics with period filtering and top contributors
+- ⚙️ **Configurable hours per day**: Choose between 8h workday or 24h calendar day mode
+- ⚡ Optimized API calls for fast loading with smart caching
 
 ## Installation
 
@@ -34,7 +35,7 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 4. Select the work date in the calendar (current date is set by default)
 5. Add time spent in the format "1d 2h 30m" (days, hours, minutes)
    - Examples: "2h 30m", "1d", "45m", "1d 6h"
-   - Note: 1 day = 8 hours of work time
+   - Note: 1 day = 8 hours (workday mode) or 24 hours (calendar mode, configurable in settings)
 6. View time summary on the back of the card
 7. If needed, delete incorrect entries using the "Delete" button in the "History" section
 
@@ -61,6 +62,9 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 
 ### Managing Data & Settings
 
+- **Hours per day setting**: Go to Settings → Choose between "8 hours (work day)" or "24 hours (calendar day)"
+  - This affects how days are calculated: 16 hours = 2 days (8h mode) or 0d 16h (24h mode)
+  - Changes apply instantly to all time displays on the board
 - **Clear cache**: Click the "Settings" button on the board toolbar → "Clear Cache and Reload"
 - **Clear API cache**: Settings → "Clear API Cache" (clears Supabase cache without reloading)
 - **View storage statistics**: Go to Settings → "View Storage Statistics"
@@ -110,15 +114,26 @@ The Power-Up uses Supabase for cloud storage:
 -- Boards table
 CREATE TABLE boards (
   id SERIAL PRIMARY KEY,
-  trello_board_id TEXT UNIQUE NOT NULL,
+  trello_board_id UUID UNIQUE NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Cards table with aggregated time
+-- Board settings table
+CREATE TABLE board_settings (
+  id SERIAL PRIMARY KEY,
+  board_id UUID REFERENCES boards(id) UNIQUE NOT NULL,
+  hours_per_day INTEGER DEFAULT 8 CHECK (hours_per_day IN (8, 24)),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Cards table with aggregated time in minutes
 CREATE TABLE cards (
   id SERIAL PRIMARY KEY,
   trello_card_id TEXT UNIQUE NOT NULL,
-  board_id INTEGER REFERENCES boards(id),
+  board_id UUID REFERENCES boards(id),
+  time_minutes INTEGER DEFAULT 0,
+  -- Legacy fields (deprecated, keep for backward compatibility)
   total_days INTEGER DEFAULT 0,
   total_hours INTEGER DEFAULT 0,
   total_minutes INTEGER DEFAULT 0,
@@ -126,12 +141,14 @@ CREATE TABLE cards (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Time entries table
+-- Time entries table with minutes-based storage
 CREATE TABLE time_entries (
   id SERIAL PRIMARY KEY,
   card_id INTEGER REFERENCES cards(id),
   trello_member_id TEXT,
   member_name TEXT,
+  time_minutes INTEGER DEFAULT 0,
+  -- Legacy fields (deprecated, keep for backward compatibility)
   days INTEGER DEFAULT 0,
   hours INTEGER DEFAULT 0,
   minutes INTEGER DEFAULT 0,
@@ -144,34 +161,54 @@ CREATE TABLE time_entries (
 
 -- Indexes for performance
 CREATE INDEX idx_cards_trello_card_id ON cards(trello_card_id);
+CREATE INDEX idx_cards_board_id ON cards(board_id);
 CREATE INDEX idx_time_entries_card_id ON time_entries(card_id);
 CREATE INDEX idx_time_entries_work_date ON time_entries(work_date);
+CREATE INDEX idx_board_settings_board_id ON board_settings(board_id);
 ```
 
 ### Time Calculation
 
-- 1 day (d) = 8 working hours
-- 1 hour (h) = 60 minutes
-- When adding time, normalization is automatically performed:
-   - 60 minutes = 1 hour
-   - 8 hours = 1 day
+The Power-Up uses a **minute-based storage system** with configurable hours-per-day settings:
+
+**Storage:**
+- All time is stored internally as minutes (`time_minutes` field)
+- Time entries are converted to minutes when saved: `totalMinutes = (days × hoursPerDay × 60) + (hours × 60) + minutes`
+- Example with 8h mode: "1d 2h 30m" → `(1 × 8 × 60) + (2 × 60) + 30 = 630 minutes`
+- Example with 24h mode: "1d 2h 30m" → `(1 × 24 × 60) + (2 × 60) + 30 = 1590 minutes`
+
+**Display:**
+- Minutes are converted back to d/h/m format based on current board settings
+- Board setting controls: 1 day = 8 hours (workday) OR 1 day = 24 hours (calendar day)
+- Display updates automatically when settings change (no data migration needed)
+- Example: 630 minutes = "1d 2h 30m" (8h mode) or "0d 10h 30m" (24h mode)
+
+**Benefits:**
+- Single source of truth (minutes)
+- Flexible display without changing stored data
+- Accurate time tracking regardless of display mode
+- No data loss when switching between modes
 
 ### Performance Optimizations
 
 The Power-Up implements several optimizations for fast loading:
 
-1. **Smart data fetching**: Badge display uses only aggregated time (`total_days`, `total_hours`, `total_minutes`) without loading full history
+1. **Smart data fetching**: Badge display uses only aggregated time (`time_minutes`) without loading full history
 2. **In-memory caching**: API responses are cached with TTL:
    - Badge data: 60 seconds
-   - Board data: 5 minutes (legacy, minimal usage)
+   - Full card data: 60 seconds
+   - Settings cache invalidation on change
 3. **Request deduplication**: Protection against simultaneous identical requests
 4. **Selective field queries**: Only necessary fields are fetched from Supabase
 5. **Minimal return preferences**: Write operations use `Prefer: return=minimal` header
+6. **Batch queries for statistics**: Board stats use single query with `in.(cardIds)` instead of N queries
+7. **Auto-refresh on settings change**: Cache invalidates automatically when hours-per-day setting changes
 
 **Performance metrics:**
 - Opening board with 16 cards: **16 requests** (was 48)
 - Opening card: **2 requests** (was 4)
 - Opening time entry popup: **2 requests** (was 4)
+- Board statistics: **2-3 requests** (was N+2 for N cards)
 
 ### API Call Flow
 
@@ -179,15 +216,19 @@ The Power-Up implements several optimizations for fast loading:
 ```
 For each visible card:
 └─ getCardDataForBadge()
-   └─ GET /cards?select=total_days,total_hours,total_minutes&trello_card_id=eq.{id}
-      ✅ Only aggregates, NO time_entries history
+   ├─ checkSettingsUpdate() - checks if settings changed
+   ├─ GET /cards?select=time_minutes&trello_card_id=eq.{id}
+   └─ GET /board_settings?board_id=eq.{board_id}
+      ✅ Only time_minutes aggregate, NO time_entries history
 ```
 
 **Opening card detail:**
 ```
 1. getCardData()
-   ├─ GET /cards?select=id,trello_card_id,total_days,total_hours,total_minutes&trello_card_id=eq.{id}
-   └─ GET /time_entries?select=...&card_id=eq.{card_id}&order=created_at.desc
+   ├─ checkSettingsUpdate() - checks if settings changed
+   ├─ GET /cards?select=id,trello_card_id,time_minutes&trello_card_id=eq.{id}
+   ├─ GET /time_entries?select=time_minutes,description,work_date,...&card_id=eq.{card_id}&order=created_at.desc
+   └─ GET /board_settings?board_id=eq.{board_id}
       ✅ Full history with all details
 ```
 
@@ -196,10 +237,20 @@ For each visible card:
 1. ensureCardWithBoard()  (if card doesn't exist)
    ├─ GET /cards?select=id,...&trello_card_id=eq.{id}
    └─ (if needed) GET /boards + POST /boards + POST /cards
-2. POST /time_entries
-3. updateCardTotalTime()
-   ├─ GET /time_entries?select=days,hours,minutes&card_id=eq.{id}
-   └─ PATCH /cards?id=eq.{id}
+2. GET /board_settings - get hours_per_day for conversion
+3. POST /time_entries (with time_minutes calculated)
+4. updateCardTotalTime()
+   ├─ GET /time_entries?select=time_minutes&card_id=eq.{id}
+   └─ PATCH /cards?id=eq.{id} (update time_minutes)
+```
+
+**Board statistics (optimized):**
+```
+1. getBoardStats()
+   ├─ GET /boards?select=id&trello_board_id=eq.{id}
+   ├─ GET /cards?select=id,trello_card_id&board_id=eq.{board_id}
+   └─ GET /time_entries?select=time_minutes,member_name,card_id&card_id=in.(id1,id2,...)&work_date=gte.{start}&work_date=lte.{end}
+      ✅ Single batch query for ALL cards' time entries
 ```
 
 ## Configuration
@@ -221,9 +272,29 @@ The Power-Up is configured for production use with Supabase cloud storage.
 
 ## Architecture Decisions
 
+### Why minute-based storage?
+
+The Power-Up stores all time internally as minutes (`time_minutes` field) instead of separate days/hours/minutes:
+
+**Pros:**
+- **Flexible display**: Can switch between 8h/24h modes without data migration
+- **Single source of truth**: No ambiguity about total time
+- **Accurate calculations**: All math done in minutes, then converted for display
+- **Simple aggregation**: Just sum minutes, no complex d/h/m arithmetic
+- **Future-proof**: Easy to add new display modes (e.g., decimal hours)
+
+**Cons:**
+- **Display conversion overhead**: Must convert minutes to d/h/m on every display
+- **Migration complexity**: Existing data must be migrated from d/h/m to minutes
+
+**Mitigation:**
+- Conversion is very fast (simple integer math)
+- Client-side caching minimizes conversion frequency
+- Migration done once with SQL scripts
+
 ### Why separate aggregates in cards table?
 
-Instead of calculating totals on-the-fly from `time_entries`, we store aggregated values (`total_days`, `total_hours`, `total_minutes`) in the `cards` table:
+Instead of calculating totals on-the-fly from `time_entries`, we store aggregated `time_minutes` in the `cards` table:
 
 **Pros:**
 - **Fast badge rendering**: No need to fetch and sum all time entries for each card
@@ -281,7 +352,29 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 2.0 (Current)
+### Version 3.0 (Current - Minute-Based Storage)
+
+**Major features:**
+- ✅ **Minute-based storage system**: All time stored as minutes internally
+- ✅ **Configurable hours per day**: Choose between 8h workday or 24h calendar day
+- ✅ **Flexible display**: Switch display modes without data migration
+- ✅ **Board settings table**: Per-board configuration with `hours_per_day` setting
+- ✅ **Auto-refresh on settings change**: Cache invalidation via timestamp tracking
+- ✅ **Optimized board statistics**: Batch query using `in.(cardIds)` instead of N queries
+
+**Database changes:**
+- Added `time_minutes` field to `cards` and `time_entries` tables
+- Added `board_settings` table with `hours_per_day` constraint
+- Changed `trello_board_id` type from TEXT to UUID
+- Migrated all existing data from d/h/m to minutes (8h conversion)
+- Kept legacy fields for backward compatibility
+
+**Performance improvements:**
+- Board stats: 2-3 requests (was N+2 for N cards)
+- Settings-aware caching with automatic invalidation
+- Single batch query for all statistics data
+
+### Version 2.0
 
 **Major optimizations:**
 - ✅ Removed legacy Trello Storage migration code
@@ -310,12 +403,15 @@ The `board_id` is only needed when creating a new card record.
 
 ## TODO
 
+- [x] ~~Batch API calls for board statistics~~ (✅ Done in v3.0)
+- [x] ~~Add configurable hours per day~~ (✅ Done in v3.0)
+- [ ] Remove legacy d/h/m fields from database (after final testing)
 - [ ] Batch API calls for board loading (1 request for all cards instead of N)
 - [ ] Add versioning in URL to prevent caching issues
 - [ ] Add ability to filter by users in export
 - [ ] Improve mobile support
 - [ ] Add support for different date and time formats
-- [ ] Add support for decimal time input (e.g., 2.5d → 2d 4h)
+- [ ] Add support for decimal time input (e.g., 2.5h → 2h 30m)
 - [ ] Add rate calculation and billing features
 - [ ] Add team management and permissions
 - [ ] Add advanced reporting and analytics
