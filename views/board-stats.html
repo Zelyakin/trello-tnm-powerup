@@ -270,74 +270,43 @@
 
             const { startDate, endDate } = getPeriodDates(currentPeriod);
 
-            let totalMinutes = 0;
-            let totalEntries = 0;
-            let activeCards = new Set();
-            const contributors = new Map();
-            let hoursPerDay = 8; // Default
+            // Get board ID and settings
+            const board = await t.board('id');
+            const settings = await SupabaseAPI.getBoardSettings(board.id);
+            const hoursPerDay = settings.hours_per_day || 8;
 
-            // Get data from Supabase (now includes hoursPerDay)
-            const result = await TnMStorage.getAllCardDataForExport(
-                t,
+            // Use optimized getBoardStats method - makes only 2-3 requests instead of N requests
+            const stats = await SupabaseAPI.getBoardStats(
+                board.id,
                 formatDateForAPI(startDate),
                 formatDateForAPI(endDate)
             );
-            const exportData = result.data;
-            hoursPerDay = result.hoursPerDay || 8;
-
-            // Get card names
-            const allCards = await t.cards('all');
-            const cardNameMap = new Map();
-            allCards.forEach(card => cardNameMap.set(card.id, card.name));
-
-            exportData.forEach(({ cardId, timeEntries }) => {
-                if (timeEntries && timeEntries.length > 0) {
-                    activeCards.add(cardId);
-
-                    timeEntries.forEach(entry => {
-                        const entryMinutes = entry.time_minutes || 0;
-                        totalMinutes += entryMinutes;
-                        totalEntries++;
-
-                        // Count by contributor
-                        const memberName = entry.member_name || 'Unknown';
-                        if (!contributors.has(memberName)) {
-                            contributors.set(memberName, 0);
-                        }
-                        contributors.set(memberName, contributors.get(memberName) + entryMinutes);
-                    });
-                }
-            });
 
             // Calculate average per day
             const periodDays = calculateDaysBetween(startDate, endDate);
-            const avgMinutesPerDay = Math.floor(totalMinutes / periodDays);
+            const avgMinutesPerDay = Math.floor(stats.totalMinutes / periodDays);
 
             // Update UI
             document.getElementById('period-display').textContent = getPeriodDisplayName(currentPeriod);
-            document.getElementById('total-time').textContent = TnMStorage.formatTime(totalMinutes, hoursPerDay);
-            document.getElementById('total-entries').textContent = totalEntries;
-            document.getElementById('active-cards').textContent = activeCards.size;
+            document.getElementById('total-time').textContent = TnMStorage.formatTime(stats.totalMinutes, hoursPerDay);
+            document.getElementById('total-entries').textContent = stats.totalEntries;
+            document.getElementById('active-cards').textContent = stats.activeCards;
             document.getElementById('avg-per-day').textContent = TnMStorage.formatTime(avgMinutesPerDay, hoursPerDay);
 
             // Render contributors
             const contributorsList = document.getElementById('contributors-list');
             contributorsList.innerHTML = '';
 
-            if (contributors.size === 0) {
+            if (stats.contributors.length === 0) {
                 contributorsList.innerHTML = '<div style="text-align: center; color: #5E6C84; font-style: italic;">No data for selected period</div>';
             } else {
-                // Sort contributors by total time
-                const sortedContributors = Array.from(contributors.entries()).sort((a, b) => {
-                    return b[1] - a[1]; // Sort by minutes descending
-                }).slice(0, 3); // Limit to top 3
-
-                sortedContributors.forEach(([name, minutes]) => {
+                // contributors array is already sorted and limited to top 3 by the API
+                stats.contributors.forEach(({ memberName, totalMinutes }) => {
                     const contributorDiv = document.createElement('div');
                     contributorDiv.className = 'contributor-item';
                     contributorDiv.innerHTML = `
-                        <div class="contributor-name">${name}</div>
-                        <div class="contributor-time">${TnMStorage.formatTime(minutes, hoursPerDay)}</div>
+                        <div class="contributor-name">${memberName}</div>
+                        <div class="contributor-time">${TnMStorage.formatTime(totalMinutes, hoursPerDay)}</div>
                     `;
                     contributorsList.appendChild(contributorDiv);
                 });

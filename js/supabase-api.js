@@ -443,6 +443,90 @@ const SupabaseAPI = {
         }
     },
 
+    // Получение статистики доски (оптимизированный запрос)
+    async getBoardStats(trelloBoardId, startDate, endDate) {
+        try {
+            console.log('Getting board stats from Supabase:', { trelloBoardId, startDate, endDate });
+
+            // Находим доску
+            const boards = await SupabaseAPI.request(
+                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+            );
+
+            if (boards.length === 0) {
+                console.log('Board not found in Supabase');
+                return {
+                    totalMinutes: 0,
+                    totalEntries: 0,
+                    activeCards: 0,
+                    contributors: []
+                };
+            }
+
+            const boardId = boards[0].id;
+
+            // Получаем все карточки доски
+            const cards = await SupabaseAPI.request(
+                `cards?select=id,trello_card_id&board_id=eq.${boardId}`
+            );
+
+            if (cards.length === 0) {
+                return {
+                    totalMinutes: 0,
+                    totalEntries: 0,
+                    activeCards: 0,
+                    contributors: []
+                };
+            }
+
+            const cardIds = cards.map(c => c.id);
+
+            // Строим запрос для получения всех записей за период
+            let query = `time_entries?select=time_minutes,member_name,card_id&card_id=in.(${cardIds.join(',')})`;
+
+            if (startDate) {
+                query += `&work_date=gte.${startDate}`;
+            }
+
+            if (endDate) {
+                query += `&work_date=lte.${endDate}`;
+            }
+
+            const timeEntries = await SupabaseAPI.request(query);
+
+            // Агрегируем данные на клиенте (можно было бы использовать PostgreSQL functions для этого)
+            let totalMinutes = 0;
+            const activeCardsSet = new Set();
+            const contributorsMap = new Map();
+
+            timeEntries.forEach(entry => {
+                totalMinutes += entry.time_minutes || 0;
+                activeCardsSet.add(entry.card_id);
+
+                const memberName = entry.member_name || 'Unknown';
+                if (!contributorsMap.has(memberName)) {
+                    contributorsMap.set(memberName, 0);
+                }
+                contributorsMap.set(memberName, contributorsMap.get(memberName) + (entry.time_minutes || 0));
+            });
+
+            // Сортируем contributors по времени (descending)
+            const contributors = Array.from(contributorsMap.entries())
+                .map(([name, minutes]) => ({ name, minutes }))
+                .sort((a, b) => b.minutes - a.minutes);
+
+            return {
+                totalMinutes: totalMinutes,
+                totalEntries: timeEntries.length,
+                activeCards: activeCardsSet.size,
+                contributors: contributors
+            };
+        } catch (error) {
+            console.error('Error getting board stats:', error);
+            throw error;
+        }
+    },
+
     // Очистка кеша
     clearCache() {
         this._cardDataCache.clear();
