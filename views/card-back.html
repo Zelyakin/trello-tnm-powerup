@@ -135,6 +135,7 @@
 
         try {
             const data = await TnMStorage.getCardData(t);
+            const hoursPerDay = data.hoursPerDay || 8;
             const timeEntriesList = document.getElementById('time-entries-list');
 
             // Filter only time entries
@@ -161,7 +162,7 @@
                                     <span class="tnm-time-date">${displayDate}</span>
                                     <span class="tnm-time-user">${entry.memberName || entry.member_name || 'User'}</span>
                                 </div>
-                                <div class="tnm-time-hours">${TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0)}</div>
+                                <div class="tnm-time-hours">${TnMStorage.formatTime(entry.timeMinutes || 0, hoursPerDay)}</div>
                             </div>
                             ${entry.description ? `<div class="tnm-time-description">${entry.description}</div>` : ''}
                         </div>
@@ -181,7 +182,7 @@
                 entriesHTML += `
                     <div class="tnm-time-total">
                         <div>TOTAL:</div>
-                        <div>${TnMStorage.formatTime(data.days || 0, data.hours || 0, data.minutes || 0)}</div>
+                        <div>${TnMStorage.formatTime(data.timeMinutes || 0, hoursPerDay)}</div>
                     </div>
                 `;
 

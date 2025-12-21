@@ -25,12 +25,12 @@ TrelloPowerUp.initialize({
                 if (!data) return [];
 
                 // Check if there is time spent
-                const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
+                const hasTime = (data.timeMinutes || 0) > 0;
 
                 if (!hasTime) return [];
 
                 return [{
-                    text: TnMStorage.formatTime(data.days, data.hours, data.minutes),
+                    text: TnMStorage.formatTime(data.timeMinutes, data.hoursPerDay),
                     color: 'blue'
                 }];
             })
@@ -47,7 +47,7 @@ TrelloPowerUp.initialize({
                 if (!data) return [];
 
                 // Check if there is time spent
-                const hasTime = (data.days || 0) > 0 || (data.hours || 0) > 0 || (data.minutes || 0) > 0;
+                const hasTime = (data.timeMinutes || 0) > 0;
 
                 if (!hasTime) return [{
                     title: 'Time',
@@ -64,7 +64,7 @@ TrelloPowerUp.initialize({
 
                 return [{
                     title: 'Time',
-                    text: 'Time spent: ' + TnMStorage.formatTime(data.days, data.hours, data.minutes),
+                    text: 'Time spent: ' + TnMStorage.formatTime(data.timeMinutes, data.hoursPerDay),
                     color: 'blue',
                     callback: function(t) {
                         return t.popup({

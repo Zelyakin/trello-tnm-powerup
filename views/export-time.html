@@ -187,7 +187,8 @@
         return date >= startDate && date <= endDate;
     }
 
-    // Function to convert time to minutes
+    // DEPRECATED: Function kept for backwards compatibility
+    // Time is now stored in minutes in the database
     function convertToMinutes(days, hours, minutes) {
         // 1 day = 8 hours = 480 minutes
         return (days * 8 * 60) + (hours * 60) + minutes;
@@ -248,10 +249,13 @@
 
             addDebugInfo('Fetching data from Supabase...');
 
-            // Get data from Supabase
-            const exportData = await TnMStorage.getAllCardDataForExport(t, startDateValue, endDateValue);
+            // Get data from Supabase (now includes hoursPerDay setting)
+            const result = await TnMStorage.getAllCardDataForExport(t, startDateValue, endDateValue);
+            const exportData = result.data;
+            const hoursPerDay = result.hoursPerDay || 8;
 
             addDebugInfo(`Found ${exportData.length} cards with data in Supabase`);
+            addDebugInfo(`Board setting: ${hoursPerDay} hours per day`);
 
             // Get information about all cards on the board for names
             const allCards = await t.cards('all');
@@ -272,8 +276,8 @@
                         const dateStr = formatDateForDisplay(entry.work_date);
                         const cardNameEscaped = cardName.replace(/"/g, '""');
                         const userName = (entry.member_name || 'User').replace(/"/g, '""');
-                        const timeStr = TnMStorage.formatTime(entry.days || 0, entry.hours || 0, entry.minutes || 0);
-                        const timeMinutes = convertToMinutes(entry.days || 0, entry.hours || 0, entry.minutes || 0);
+                        const timeMinutes = entry.time_minutes || 0;
+                        const timeStr = TnMStorage.formatTime(timeMinutes, hoursPerDay);
                         const description = (entry.description || '').replace(/"/g, '""');
 
                         csvContent += `"${dateStr}","${cardNameEscaped}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
