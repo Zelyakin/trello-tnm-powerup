@@ -675,9 +675,10 @@ const SupabaseAPI = {
 
             console.log(`Board settings updated: hours_per_day = ${hoursPerDay}`);
 
-            // Инвалидируем кэши после обновления
+            // Инвалидируем только кэш настроек
             this._boardSettingsCache.delete(`settings_${trelloBoardId}`);
-            this._cardDataCache.clear(); // т.к. отображение времени изменится
+            // Данные карточек (time_minutes) не меняются, только формат отображения
+            // Trello автоматически обновит бэджи с новыми настройками
 
             return { success: true };
         } catch (error) {
