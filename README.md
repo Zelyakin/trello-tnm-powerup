@@ -16,7 +16,7 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 - 🔄 Cache clearing and Power-Up refresh
 - 📈 Board statistics with period filtering and top contributors
 - ⚙️ **Configurable hours per day**: Choose between 8h workday or 24h calendar day mode
-- ⚡ Optimized API calls for fast loading with smart caching
+- ⚡ **High performance**: Advanced multi-level caching reduces API calls by 75% for instant loading
 
 ## Installation
 

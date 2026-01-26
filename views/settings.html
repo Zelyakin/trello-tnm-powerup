@@ -234,12 +234,8 @@
 
       await TnMStorage.updateBoardSettings(t, hoursPerDay);
 
-      // Clear cache to refresh display
-      if (window.SupabaseAPI) {
-        window.SupabaseAPI.clearCache();
-      }
-
       // Notify Trello to refresh all badges by updating a timestamp
+      // checkSettingsUpdate() в каждой карточке обновит кэш настроек автоматически
       await t.set('board', 'shared', 'tnm-settings-updated', Date.now());
 
       document.getElementById('status-message').textContent = 'Settings saved successfully! Refreshing...';
