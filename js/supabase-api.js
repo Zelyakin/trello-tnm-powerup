@@ -7,6 +7,8 @@ const SupabaseAPI = {
     _cardDataCache: new Map(),
     _boardIdCache: new Map(),        // Кэш board_id (trelloBoardId → supabaseBoardId)
     _boardSettingsCache: new Map(),  // Кэш настроек доски (trelloBoardId → settings)
+    _boardIdPromises: new Map(),     // Промисы текущих запросов board_id (для защиты от race condition)
+    _boardSettingsPromises: new Map(), // Промисы текущих запросов settings (для защиты от race condition)
     _lastSettingsUpdate: 0, // Timestamp последнего обновления настроек
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
@@ -496,6 +498,8 @@ const SupabaseAPI = {
         this._cardDataCache.clear();
         this._boardIdCache.clear();
         this._boardSettingsCache.clear();
+        this._boardIdPromises.clear();
+        this._boardSettingsPromises.clear();
         console.log('Supabase API cache cleared');
     },
 
@@ -510,33 +514,53 @@ const SupabaseAPI = {
             return cached.boardId;
         }
 
-        console.log(`Fetching fresh board ID for ${trelloBoardId}`);
-
-        // Запрашиваем из БД
-        const boards = await this.request(
-            `boards?select=id&trello_board_id=eq.${trelloBoardId}`
-        );
-
-        let boardId;
-
-        if (boards.length === 0) {
-            // Создаем новую доску
-            const newBoards = await this.request('boards', {
-                method: 'POST',
-                body: JSON.stringify({ trello_board_id: trelloBoardId })
-            });
-            boardId = newBoards[0].id;
-        } else {
-            boardId = boards[0].id;
+        // Проверяем, нет ли уже текущего запроса (защита от race condition)
+        const existingPromise = this._boardIdPromises.get(cacheKey);
+        if (existingPromise) {
+            console.log(`Waiting for existing board ID request for ${trelloBoardId}`);
+            return existingPromise;
         }
 
-        // Кэшируем результат
-        this._boardIdCache.set(cacheKey, {
-            boardId: boardId,
-            timestamp: Date.now()
-        });
+        console.log(`Fetching fresh board ID for ${trelloBoardId}`);
 
-        return boardId;
+        // Создаем промис для текущего запроса
+        const promise = (async () => {
+            try {
+                // Запрашиваем из БД
+                const boards = await this.request(
+                    `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+                );
+
+                let boardId;
+
+                if (boards.length === 0) {
+                    // Создаем новую доску
+                    const newBoards = await this.request('boards', {
+                        method: 'POST',
+                        body: JSON.stringify({ trello_board_id: trelloBoardId })
+                    });
+                    boardId = newBoards[0].id;
+                } else {
+                    boardId = boards[0].id;
+                }
+
+                // Кэшируем результат
+                this._boardIdCache.set(cacheKey, {
+                    boardId: boardId,
+                    timestamp: Date.now()
+                });
+
+                return boardId;
+            } finally {
+                // Удаляем промис после завершения
+                this._boardIdPromises.delete(cacheKey);
+            }
+        })();
+
+        // Сохраняем промис
+        this._boardIdPromises.set(cacheKey, promise);
+
+        return promise;
     },
 
     // Получение настроек доски
@@ -551,39 +575,59 @@ const SupabaseAPI = {
                 return cached.settings;
             }
 
-            console.log(`Fetching fresh board settings for ${trelloBoardId}`);
-
-            // Получаем boardId (кэшируется отдельно в getBoardId)
-            const boardId = await this.getBoardId(trelloBoardId);
-
-            // Ищем настройки
-            const settings = await this.request(
-                `board_settings?select=hours_per_day&board_id=eq.${boardId}`
-            );
-
-            let result;
-
-            if (settings.length === 0) {
-                // Создаем дефолтные настройки
-                const newSettings = await this.request('board_settings', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        board_id: boardId,
-                        hours_per_day: 8
-                    })
-                });
-                result = { hours_per_day: newSettings[0].hours_per_day };
-            } else {
-                result = { hours_per_day: settings[0].hours_per_day };
+            // Проверяем, нет ли уже текущего запроса (защита от race condition)
+            const existingPromise = this._boardSettingsPromises.get(cacheKey);
+            if (existingPromise) {
+                console.log(`Waiting for existing board settings request for ${trelloBoardId}`);
+                return existingPromise;
             }
 
-            // Кэшируем результат
-            this._boardSettingsCache.set(cacheKey, {
-                settings: result,
-                timestamp: Date.now()
-            });
+            console.log(`Fetching fresh board settings for ${trelloBoardId}`);
 
-            return result;
+            // Создаем промис для текущего запроса
+            const promise = (async () => {
+                try {
+                    // Получаем boardId (кэшируется отдельно в getBoardId)
+                    const boardId = await this.getBoardId(trelloBoardId);
+
+                    // Ищем настройки
+                    const settings = await this.request(
+                        `board_settings?select=hours_per_day&board_id=eq.${boardId}`
+                    );
+
+                    let result;
+
+                    if (settings.length === 0) {
+                        // Создаем дефолтные настройки
+                        const newSettings = await this.request('board_settings', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                board_id: boardId,
+                                hours_per_day: 8
+                            })
+                        });
+                        result = { hours_per_day: newSettings[0].hours_per_day };
+                    } else {
+                        result = { hours_per_day: settings[0].hours_per_day };
+                    }
+
+                    // Кэшируем результат
+                    this._boardSettingsCache.set(cacheKey, {
+                        settings: result,
+                        timestamp: Date.now()
+                    });
+
+                    return result;
+                } finally {
+                    // Удаляем промис после завершения
+                    this._boardSettingsPromises.delete(cacheKey);
+                }
+            })();
+
+            // Сохраняем промис
+            this._boardSettingsPromises.set(cacheKey, promise);
+
+            return promise;
 
         } catch (error) {
             console.error('Error getting board settings:', error);
