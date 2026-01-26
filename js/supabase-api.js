@@ -59,9 +59,11 @@ const SupabaseAPI = {
             const settingsTimestamp = await t.get('board', 'shared', 'tnm-settings-updated', 0);
 
             if (settingsTimestamp > this._lastSettingsUpdate) {
-                console.log('Settings updated, clearing cache...');
+                console.log('Settings updated, invalidating board settings cache...');
                 this._lastSettingsUpdate = settingsTimestamp;
-                this.clearCache();
+                // Очищаем только кэш настроек, данные карточек остаются в кэше
+                this._boardSettingsCache.clear();
+                this._boardSettingsPromises.clear();
             }
         } catch (error) {
             console.error('Error checking settings update:', error);
