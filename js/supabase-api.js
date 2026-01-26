@@ -5,6 +5,8 @@ const SupabaseAPI = {
 
     // Кеш с TTL
     _cardDataCache: new Map(),
+    _boardIdCache: new Map(),        // Кэш board_id (trelloBoardId → supabaseBoardId)
+    _boardSettingsCache: new Map(),  // Кэш настроек доски (trelloBoardId → settings)
     _lastSettingsUpdate: 0, // Timestamp последнего обновления настроек
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
@@ -101,24 +103,8 @@ const SupabaseAPI = {
             }
 
             // Карточки нет - нужно создать
-            // Только здесь нам нужна доска
-            const boards = await SupabaseAPI.request(
-                `boards?select=id,trello_board_id&trello_board_id=eq.${trelloBoardId}`
-            );
-
-            let boardId;
-            if (boards.length > 0) {
-                boardId = boards[0].id;
-            } else {
-                // Создаем доску если ее нет
-                const newBoards = await SupabaseAPI.request('boards', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        trello_board_id: trelloBoardId
-                    })
-                });
-                boardId = newBoards[0].id;
-            }
+            // Используем кэшированный метод для получения boardId
+            const boardId = await this.getBoardId(trelloBoardId);
 
             // Создаем карточку
             try {
@@ -396,21 +382,12 @@ const SupabaseAPI = {
         try {
             console.log('Getting all data for export from Supabase:', { boardId, startDate, endDate });
 
-            // Находим доску
-            const boards = await SupabaseAPI.request(
-                `boards?select=id&trello_board_id=eq.${boardId}`
-            );
-
-            if (boards.length === 0) {
-                console.log('Board not found in Supabase');
-                return [];
-            }
-
-            const board = boards[0];
+            // Используем кэшированный метод для получения boardId
+            const supabaseBoardId = await this.getBoardId(boardId);
 
             // Получаем все карточки доски
-            const cards = await SupabaseAPI.request(
-                `cards?select=id,trello_card_id&board_id=eq.${board.id}`
+            const cards = await this.request(
+                `cards?select=id,trello_card_id&board_id=eq.${supabaseBoardId}`
             );
 
             const exportData = [];
@@ -448,25 +425,11 @@ const SupabaseAPI = {
         try {
             console.log('Getting board stats from Supabase:', { trelloBoardId, startDate, endDate });
 
-            // Находим доску
-            const boards = await SupabaseAPI.request(
-                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
-            );
-
-            if (boards.length === 0) {
-                console.log('Board not found in Supabase');
-                return {
-                    totalMinutes: 0,
-                    totalEntries: 0,
-                    activeCards: 0,
-                    contributors: []
-                };
-            }
-
-            const boardId = boards[0].id;
+            // Используем кэшированный метод для получения boardId
+            const boardId = await this.getBoardId(trelloBoardId);
 
             // Получаем все карточки доски
-            const cards = await SupabaseAPI.request(
+            const cards = await this.request(
                 `cards?select=id,trello_card_id&board_id=eq.${boardId}`
             );
 
@@ -492,7 +455,7 @@ const SupabaseAPI = {
                 query += `&work_date=lte.${endDate}`;
             }
 
-            const timeEntries = await SupabaseAPI.request(query);
+            const timeEntries = await this.request(query);
 
             // Агрегируем данные на клиенте (можно было бы использовать PostgreSQL functions для этого)
             let totalMinutes = 0;
@@ -531,67 +494,97 @@ const SupabaseAPI = {
     // Очистка кеша
     clearCache() {
         this._cardDataCache.clear();
+        this._boardIdCache.clear();
+        this._boardSettingsCache.clear();
         console.log('Supabase API cache cleared');
+    },
+
+    // Получение или создание board_id с кэшированием
+    async getBoardId(trelloBoardId) {
+        const cacheKey = `board_${trelloBoardId}`;
+
+        // Проверяем кэш
+        const cached = this._boardIdCache.get(cacheKey);
+        if (cached && this.isCacheValid(cached.timestamp, this.CARD_DATA_TTL)) {
+            console.log(`Using cached board ID for ${trelloBoardId}`);
+            return cached.boardId;
+        }
+
+        console.log(`Fetching fresh board ID for ${trelloBoardId}`);
+
+        // Запрашиваем из БД
+        const boards = await this.request(
+            `boards?select=id&trello_board_id=eq.${trelloBoardId}`
+        );
+
+        let boardId;
+
+        if (boards.length === 0) {
+            // Создаем новую доску
+            const newBoards = await this.request('boards', {
+                method: 'POST',
+                body: JSON.stringify({ trello_board_id: trelloBoardId })
+            });
+            boardId = newBoards[0].id;
+        } else {
+            boardId = boards[0].id;
+        }
+
+        // Кэшируем результат
+        this._boardIdCache.set(cacheKey, {
+            boardId: boardId,
+            timestamp: Date.now()
+        });
+
+        return boardId;
     },
 
     // Получение настроек доски
     async getBoardSettings(trelloBoardId) {
         try {
-            // Сначала находим board по trello_board_id
-            const boards = await SupabaseAPI.request(
-                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
-            );
+            const cacheKey = `settings_${trelloBoardId}`;
 
-            if (boards.length === 0) {
-                // Доски еще нет - создадим с дефолтными настройками
-                const newBoards = await SupabaseAPI.request('boards', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        trello_board_id: trelloBoardId
-                    })
-                });
-
-                const boardId = newBoards[0].id;
-
-                // Создаем дефолтные настройки
-                const newSettings = await SupabaseAPI.request('board_settings', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        board_id: boardId,
-                        hours_per_day: 8
-                    })
-                });
-
-                return {
-                    hours_per_day: newSettings[0].hours_per_day
-                };
+            // Проверяем кэш настроек
+            const cached = this._boardSettingsCache.get(cacheKey);
+            if (cached && this.isCacheValid(cached.timestamp, this.CARD_DATA_TTL)) {
+                console.log(`Using cached board settings for ${trelloBoardId}`);
+                return cached.settings;
             }
 
-            const boardId = boards[0].id;
+            console.log(`Fetching fresh board settings for ${trelloBoardId}`);
+
+            // Получаем boardId (кэшируется отдельно в getBoardId)
+            const boardId = await this.getBoardId(trelloBoardId);
 
             // Ищем настройки
-            const settings = await SupabaseAPI.request(
+            const settings = await this.request(
                 `board_settings?select=hours_per_day&board_id=eq.${boardId}`
             );
 
+            let result;
+
             if (settings.length === 0) {
-                // Настроек нет - создаем дефолтные
-                const newSettings = await SupabaseAPI.request('board_settings', {
+                // Создаем дефолтные настройки
+                const newSettings = await this.request('board_settings', {
                     method: 'POST',
                     body: JSON.stringify({
                         board_id: boardId,
                         hours_per_day: 8
                     })
                 });
-
-                return {
-                    hours_per_day: newSettings[0].hours_per_day
-                };
+                result = { hours_per_day: newSettings[0].hours_per_day };
+            } else {
+                result = { hours_per_day: settings[0].hours_per_day };
             }
 
-            return {
-                hours_per_day: settings[0].hours_per_day
-            };
+            // Кэшируем результат
+            this._boardSettingsCache.set(cacheKey, {
+                settings: result,
+                timestamp: Date.now()
+            });
+
+            return result;
+
         } catch (error) {
             console.error('Error getting board settings:', error);
             // В случае ошибки возвращаем дефолтные настройки
@@ -602,25 +595,17 @@ const SupabaseAPI = {
     // Обновление настроек доски
     async updateBoardSettings(trelloBoardId, hoursPerDay) {
         try {
-            // Сначала находим board по trello_board_id
-            const boards = await SupabaseAPI.request(
-                `boards?select=id&trello_board_id=eq.${trelloBoardId}`
-            );
-
-            if (boards.length === 0) {
-                throw new Error('Board not found');
-            }
-
-            const boardId = boards[0].id;
+            // Получаем boardId (используем кэшированный метод)
+            const boardId = await this.getBoardId(trelloBoardId);
 
             // Обновляем или создаем настройки
-            const existingSettings = await SupabaseAPI.request(
+            const existingSettings = await this.request(
                 `board_settings?select=id&board_id=eq.${boardId}`
             );
 
             if (existingSettings.length === 0) {
                 // Создаем новые настройки
-                await SupabaseAPI.request('board_settings', {
+                await this.request('board_settings', {
                     method: 'POST',
                     headers: {
                         'Prefer': 'return=minimal'
@@ -632,7 +617,7 @@ const SupabaseAPI = {
                 });
             } else {
                 // Обновляем существующие
-                await SupabaseAPI.request(`board_settings?board_id=eq.${boardId}`, {
+                await this.request(`board_settings?board_id=eq.${boardId}`, {
                     method: 'PATCH',
                     headers: {
                         'Prefer': 'return=minimal'
@@ -645,6 +630,11 @@ const SupabaseAPI = {
             }
 
             console.log(`Board settings updated: hours_per_day = ${hoursPerDay}`);
+
+            // Инвалидируем кэши после обновления
+            this._boardSettingsCache.delete(`settings_${trelloBoardId}`);
+            this._cardDataCache.clear(); // т.к. отображение времени изменится
+
             return { success: true };
         } catch (error) {
             console.error('Error updating board settings:', error);
