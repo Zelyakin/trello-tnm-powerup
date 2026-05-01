@@ -26,8 +26,9 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
    - `cards` table stores **pre-aggregated totals** in `time_minutes` field
    - Individual time entries stored in `time_entries` with `time_minutes` field
    - `board_settings` stores per-board `hours_per_day` configuration (8 or 24)
-   - Legacy `total_days`/`total_hours`/`total_minutes` columns still exist in `cards` and are
-     selected by `ensureCard*()` queries but never read in code. Pending cleanup — see `TODO.md`.
+   - Legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and
+     `days`/`hours`/`minutes` columns in `time_entries` still exist in the schema (DEFAULT 0)
+     but are no longer selected, written, or read by the code. Safe to drop — see `TODO.md`.
 
 2. **In-Memory Cache** (`supabase-api.js`) - **v3.1 Multi-Level Caching**
    - **Card Data Cache**: TTL-based (60s) for individual card time data
@@ -59,13 +60,7 @@ views/
 ├── card-back.html      - Summary displayed on card back
 ├── board-stats.html    - Board statistics with period filtering
 ├── export-time.html    - CSV export interface
-├── settings.html       - Display settings (8h/24h) + cache management buttons
-├── storage-stats.html  - ⚠️ LEGACY/BROKEN. Opened from settings.html "View Storage Statistics".
-│                         Calls TnMStorage.getCardDataFromBoard() and .MAX_BOARD_ENTRIES which
-│                         no longer exist. Rudiment of pre-Supabase Trello Storage era. See TODO.md.
-└── clear-cache.html    - ⚠️ LEGACY/ORPHAN. Not referenced from manifest.json or any view.
-                          Duplicates settings.html buttons; also calls non-existent
-                          TnMStorage.resetAllData(). See TODO.md.
+└── settings.html       - Display settings (8h/24h) + cache management buttons
 ```
 
 ### Data Flow Examples
@@ -409,7 +404,7 @@ If modifying database schema:
 2. Added `board_settings` table with `hours_per_day` constraint (8 or 24)
 3. Changed `trello_board_id` type from TEXT to UUID in `boards` table
 4. Migrated all existing data: `time_minutes = (days × 8 × 60) + (hours × 60) + minutes`
-5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` table for backward compatibility (still selected by `ensureCard*()` but never read — pending cleanup, see `TODO.md`)
+5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and `days`/`hours`/`minutes` columns in `time_entries` for backward compatibility (no longer touched by code — pending DB cleanup, see `TODO.md`)
 
 **Code changes**:
 - All storage/display now uses `time_minutes` + `hours_per_day` parameter
@@ -417,9 +412,10 @@ If modifying database schema:
 - Optimized `getBoardStats()` to use batch `in.(cardIds)` query
 - Added `formatTime()` and `parseTimeToMinutes()` utilities in `storage.js`
 
-**Future cleanup** (after testing period — see `TODO.md`):
-- Stop selecting legacy `total_*` columns in `ensureCard*()` queries
+**Future cleanup** (see `TODO.md`):
+- ✅ Stopped selecting legacy `total_*` columns in `ensureCard*()` queries
 - Drop legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table
+- Drop legacy `days`/`hours`/`minutes` columns from `time_entries` table
 
 ### Version 3.1 (January 2026) - Advanced Caching & Race Condition Protection
 

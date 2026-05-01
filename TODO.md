@@ -8,7 +8,6 @@
 ### 1. Отсутствует `TnMStorage.resetAllData()`
 **Где вызывается:**
 - `views/settings.html:329` — кнопка "Delete All Data" (видна пользователю).
-- `views/clear-cache.html:222` — аналогичная кнопка.
 
 **Что происходит:** при клике — `TypeError: TnMStorage.resetAllData is not a function`.
 
@@ -18,16 +17,10 @@
 
 В `settings.html:327` уже стоит `// TODO: Добавить функцию для удаления данных из Supabase` — задача висит давно.
 
-### 2. `views/storage-stats.html` целиком сломан
-Использует функции, которых нет в `js/storage.js`:
-- `TnMStorage.getCardDataFromBoard(t, cardId)` — `views/storage-stats.html:284, 399`
-- `TnMStorage.MAX_BOARD_ENTRIES` — `views/storage-stats.html:418, 419`
+### 2. ✅ `views/storage-stats.html` удалён
+Файл вызывал несуществующие `TnMStorage.getCardDataFromBoard()` и `TnMStorage.MAX_BOARD_ENTRIES`. Был рудиментом эпохи Trello Storage с лимитом 4 КБ на карточку — для Supabase эта метрика неактуальна.
 
-Открывается из `settings.html` по кнопке "View Storage Statistics" (`views/settings.html:260`).
-
-**Что делать:** удалить `views/storage-stats.html` и кнопку открытия в `settings.html`.
-Файл — рудимент эпохи Trello Storage (когда был лимит 4096 байт на карточку).
-В минутном Supabase-хранилище понятие "статистики занятого места" неактуально.
+Также удалены: кнопка "View Storage Statistics" в [views/settings.html](views/settings.html) и её обработчик. Заодно ушли последние упоминания мёртвых ключей `tnm-cache-version`, `tnm-known-card-ids`, `tnm-global-reset-timestamp` (раньше читались только в этом файле для подсчёта размера storage) — что окончательно закрывает хвост п.6.
 
 ---
 
@@ -38,23 +31,39 @@
 
 **Что делать:** удалить целиком.
 
-### 4. Legacy-поля `total_days`, `total_hours`, `total_minutes` всё ещё селектятся
-`js/supabase-api.js:78, 102, 129` — в `ensureCard()` и `ensureCardWithBoard()` запрашиваются поля, которые после перехода на минутное хранение нигде не читаются (всё работает через `time_minutes`).
+### 4. Legacy-поля в схеме БД (колонки можно удалять)
+**Код** ✅ — больше не селектит и не пишет legacy-поля. После правки `ensureCard*()` в [js/supabase-api.js](js/supabase-api.js) ни одной ссылки на `total_*` (cards) и `days/hours/minutes` (time_entries) в SELECT/INSERT/PATCH не осталось. Чтение `cardData.days/hours/minutes` из удалённого `storage-stats.html` тоже ушло вместе с файлом (см. п.2).
 
-**Что делать:**
-- Заменить `select=id,trello_card_id,total_days,total_hours,total_minutes` → `select=id,trello_card_id`.
-  (`time_minutes` тоже нет в этих SELECT-ах, но он и не нужен в `ensureCard*` — там нужен только `id` для FK.)
-- Опционально: после периода стабилизации удалить колонки из таблицы `cards` (миграция в Supabase).
+**БД** — осталось дропнуть колонки. Все объявлены как `INTEGER DEFAULT 0` без `NOT NULL`, никем не читаются и не пишутся, безопасны к удалению:
+- `cards.total_days`, `cards.total_hours`, `cards.total_minutes`
+- `time_entries.days`, `time_entries.hours`, `time_entries.minutes`
 
-### 5. `views/clear-cache.html` — полностью орфанный
-Файл не указан ни в `manifest.json`, ни в `client.js`, ни в одном `t.popup({url: ...})` других views. Также содержит сломанный вызов `TnMStorage.resetAllData()` (см. п.1) и дублирует кнопку очистки кэша из `settings.html`.
+⚠️ **Порядок миграции:** сначала выкатить текущую версию кода (без SELECT-ов на legacy-поля) в прод и убедиться, что всё работает, и **только потом** дропать колонки. Иначе старая прод-версия, ещё селектящая `total_*`, начнёт получать ошибки от PostgREST.
 
-**Что делать:** удалить файл.
+Миграция (в Supabase SQL Editor, **после прод-деплоя**):
+```sql
+ALTER TABLE cards
+  DROP COLUMN total_days,
+  DROP COLUMN total_hours,
+  DROP COLUMN total_minutes;
 
-### 6. `tnm-cache-version` — пишется, но не читается
-Устанавливается в `views/clear-cache.html:191`, `views/settings.html:282`, `views/storage-stats.html:263`. Ни одного `t.get(..., 'tnm-cache-version', ...)` в коде нет. Видимо, осталось от старой схемы инвалидации до появления `tnm-settings-updated`.
+ALTER TABLE time_entries
+  DROP COLUMN days,
+  DROP COLUMN hours,
+  DROP COLUMN minutes;
+```
 
-**Что делать:** удалить все `t.set` с этим ключом.
+После выполнения — обновить `README.md:131-160` (секция CREATE TABLE), убрав описание legacy-полей.
+
+### 5. ✅ `views/clear-cache.html` — удалён
+Был орфаном (не подключён в `manifest.json` / `client.js` / `t.popup`), дублировал кнопки `settings.html`, вызывал несуществующую `TnMStorage.resetAllData()`.
+
+### 6. ✅ `tnm-cache-version` — write-call удалён в `settings.html`
+В [views/settings.html](views/settings.html) убрана обёртка `t.set('board','shared','tnm-cache-version', Date.now())` вокруг закрытия попапа после "Clear Cache and Reload" — ключ нигде не читался по существу, оставался от старой схемы инвалидации до появления `tnm-settings-updated`.
+
+Последнее упоминание `'tnm-cache-version'` живёт в [views/storage-stats.html:263](views/storage-stats.html:263) (массив `boardKeys` для подсчёта размера storage) — уйдёт вместе с самим файлом по п.2.
+
+Уже записанные значения в Trello board storage остаются как dead-ключ (одно поле с timestamp на доску) — миграция для зачистки нецелесообразна.
 
 ---
 
