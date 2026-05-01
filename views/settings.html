@@ -176,10 +176,6 @@
     <button id="clear-api-cache-btn" class="mod-primary">Clear API Cache</button>
   </div>
 
-  <div class="button-container">
-    <button id="storage-stats-btn" class="mod-primary">View Storage Statistics</button>
-  </div>
-
   <div class="section-separator"></div>
 
   <h2>Complete Data Reset</h2>
@@ -256,15 +252,6 @@
     }
   });
 
-  // Handler for storage statistics button
-  document.getElementById('storage-stats-btn').addEventListener('click', function() {
-    t.popup({
-      title: 'Storage Statistics',
-      url: t.signUrl('./storage-stats.html'),
-      height: 600
-    });
-  });
-
   // Handler for cache clearing button
   document.getElementById('clear-cache-btn').addEventListener('click', function() {
     // Clear local temporary cache
@@ -278,15 +265,11 @@
     // Show status message
     document.getElementById('status-message').style.display = 'block';
 
-    // Update last update timestamp
-    t.set('board', 'shared', 'tnm-cache-version', Date.now())
-            .then(function() {
-              // Close window and reload page after 2 seconds
-              setTimeout(function() {
-                t.closePopup();
-                window.location.reload(true);
-              }, 2000);
-            });
+    // Close window and reload page after 2 seconds
+    setTimeout(function() {
+      t.closePopup();
+      window.location.reload(true);
+    }, 2000);
   });
 
   // Handler for API cache clearing button

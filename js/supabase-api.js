@@ -75,7 +75,7 @@ const SupabaseAPI = {
         try {
             // Ищем карточку только по trello_card_id (он уникален глобально)
             const cards = await SupabaseAPI.request(
-                `cards?select=id,trello_card_id,total_days,total_hours,total_minutes&trello_card_id=eq.${trelloCardId}`
+                `cards?select=id,trello_card_id&trello_card_id=eq.${trelloCardId}`
             );
 
             if (cards.length > 0) {
@@ -99,7 +99,7 @@ const SupabaseAPI = {
         try {
             // Сначала пробуем найти существующую карточку
             const cards = await SupabaseAPI.request(
-                `cards?select=id,trello_card_id,total_days,total_hours,total_minutes&trello_card_id=eq.${trelloCardId}`
+                `cards?select=id,trello_card_id&trello_card_id=eq.${trelloCardId}`
             );
 
             if (cards.length > 0) {
@@ -126,7 +126,7 @@ const SupabaseAPI = {
                 if (createError.message.includes('duplicate key') || createError.message.includes('23505')) {
                     console.log('Card creation race condition, fetching existing card...');
                     const existingCards = await SupabaseAPI.request(
-                        `cards?select=id,trello_card_id,total_days,total_hours,total_minutes&trello_card_id=eq.${trelloCardId}`
+                        `cards?select=id,trello_card_id&trello_card_id=eq.${trelloCardId}`
                     );
                     if (existingCards.length > 0) {
                         return existingCards[0];
