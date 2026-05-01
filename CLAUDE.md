@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses Supabase for cloud storage. The Power-Up allows users to track time spent on Trello cards, view aggregated time data, export to CSV, and see board statistics.
 
+> **See `TODO.md`** for the list of pending fixes (broken legacy views, dead methods, settings screen redesign).
+
 **Key Features (v3.0)**:
 - Minute-based storage system for flexible time display
 - Configurable hours per day: 8h workday OR 24h calendar day (per-board setting)
@@ -24,7 +26,8 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
    - `cards` table stores **pre-aggregated totals** in `time_minutes` field
    - Individual time entries stored in `time_entries` with `time_minutes` field
    - `board_settings` stores per-board `hours_per_day` configuration (8 or 24)
-   - Legacy d/h/m fields kept for backward compatibility but deprecated
+   - Legacy `total_days`/`total_hours`/`total_minutes` columns still exist in `cards` and are
+     selected by `ensureCard*()` queries but never read in code. Pending cleanup — see `TODO.md`.
 
 2. **In-Memory Cache** (`supabase-api.js`) - **v3.1 Multi-Level Caching**
    - **Card Data Cache**: TTL-based (60s) for individual card time data
@@ -52,11 +55,17 @@ js/
 └── board-members.js  - Board member utilities
 
 views/
-├── card-detail.html  - Time entry form (popup when clicking T&M button)
-├── card-back.html    - Summary displayed on card back
-├── board-stats.html  - Board statistics with period filtering
-├── export-time.html  - CSV export interface
-└── settings.html     - Cache management and settings
+├── card-detail.html    - Time entry form (popup when clicking T&M button)
+├── card-back.html      - Summary displayed on card back
+├── board-stats.html    - Board statistics with period filtering
+├── export-time.html    - CSV export interface
+├── settings.html       - Display settings (8h/24h) + cache management buttons
+├── storage-stats.html  - ⚠️ LEGACY/BROKEN. Opened from settings.html "View Storage Statistics".
+│                         Calls TnMStorage.getCardDataFromBoard() and .MAX_BOARD_ENTRIES which
+│                         no longer exist. Rudiment of pre-Supabase Trello Storage era. See TODO.md.
+└── clear-cache.html    - ⚠️ LEGACY/ORPHAN. Not referenced from manifest.json or any view.
+                          Duplicates settings.html buttons; also calls non-existent
+                          TnMStorage.resetAllData(). See TODO.md.
 ```
 
 ### Data Flow Examples
@@ -67,27 +76,27 @@ First card:
   getCardDataForBadge()
     → checkSettingsUpdate() - check timestamp (no API call if unchanged)
     → GET /cards?select=time_minutes&trello_card_id=eq.{id}
-    → getBoardId() → GET /boards?select=id&trello_board_id=eq.{id} (cached)
-    → getBoardSettings() → GET /board_settings?board_id=eq.{id} (cached)
+    → getBoardSettings() (cold) — internally calls getBoardId() first:
+        → GET /boards?select=id&trello_board_id=eq.{id}
+        → GET /board_settings?select=hours_per_day&board_id=eq.{id}
 
 Remaining 9 cards (parallel):
   getCardDataForBadge()
     → checkSettingsUpdate() - uses cached timestamp
     → GET /cards?select=time_minutes&trello_card_id=eq.{id}
-    → getBoardId() - returns cached boardId (no API call)
     → getBoardSettings() - waits for first card's promise, then uses cache (no API call)
 
 ✓ Total: 10 card requests + 1 board ID + 1 settings = 12 requests (was 30!)
 ```
 
-**Opening card detail popup**:
+**Opening card detail popup** (typically warm cache — settings already cached from badges):
 ```
 getCardDataFull()
-  → checkSettingsUpdate() - check if settings changed
+  → checkSettingsUpdate() - check if settings changed (Trello local read, no HTTP)
   → GET /cards?select=id,trello_card_id,time_minutes&trello_card_id=eq.{id}
   → GET /time_entries?select=time_minutes,description,work_date,...&card_id=eq.{card_id}&order=created_at.desc
-  → GET /board_settings?board_id=eq.{board_id}
-  ✓ Full history with all details (3 requests)
+  → getBoardSettings() - cache hit, no HTTP
+  ✓ Full history with all details (2 requests warm / up to 4 cold)
 ```
 
 **Adding a time entry**:
@@ -318,7 +327,7 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
   - 10 × `/cards` (one per card)
   - 1 × `/boards` (cached across all cards)
   - 1 × `/board_settings` (cached across all cards)
-- Opening card detail: **3 requests** (was 4 before v3.0)
+- Opening card detail: **2 requests** with warm cache (settings already cached from badges); up to 4 with fully cold cache. Was 4 before v3.0.
 - Board statistics: **3 requests** (was N+2 before v3.0)
 - Changing settings (8h ↔ 24h): **1 request** (was ~11 before v3.1)
 - Cache TTL: 60 seconds for all caches
@@ -400,7 +409,7 @@ If modifying database schema:
 2. Added `board_settings` table with `hours_per_day` constraint (8 or 24)
 3. Changed `trello_board_id` type from TEXT to UUID in `boards` table
 4. Migrated all existing data: `time_minutes = (days × 8 × 60) + (hours × 60) + minutes`
-5. Kept legacy `days/hours/minutes` fields for backward compatibility (deprecated)
+5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` table for backward compatibility (still selected by `ensureCard*()` but never read — pending cleanup, see `TODO.md`)
 
 **Code changes**:
 - All storage/display now uses `time_minutes` + `hours_per_day` parameter
@@ -408,9 +417,9 @@ If modifying database schema:
 - Optimized `getBoardStats()` to use batch `in.(cardIds)` query
 - Added `formatTime()` and `parseTimeToMinutes()` utilities in `storage.js`
 
-**Future cleanup** (after testing period):
-- Remove legacy `days/hours/minutes` fields from both tables
-- Remove old normalization code (no longer needed with minute storage)
+**Future cleanup** (after testing period — see `TODO.md`):
+- Stop selecting legacy `total_*` columns in `ensureCard*()` queries
+- Drop legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table
 
 ### Version 3.1 (January 2026) - Advanced Caching & Race Condition Protection
 
