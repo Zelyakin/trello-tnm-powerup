@@ -8,18 +8,18 @@
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
   <style>
     .delete-record {
-      color: #CF513D;
+      color: var(--tnm-text-error);
       cursor: pointer;
       margin-left: 8px;
       font-size: 12px;
       padding: 2px 6px;
       border-radius: 3px;
       background-color: transparent;
-      border: 1px solid #CF513D;
+      border: 1px solid var(--tnm-text-error);
     }
 
     .delete-record:hover {
-      background-color: #FEE6E3;
+      background-color: var(--tnm-bg-danger-soft);
     }
 
     .history-item {
@@ -37,7 +37,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(0, 0, 0, 0.5);
+      background-color: var(--tnm-overlay);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -45,7 +45,8 @@
     }
 
     .confirmation-content {
-      background-color: white;
+      background-color: var(--tnm-bg-primary);
+      color: var(--tnm-text-primary);
       padding: 16px;
       border-radius: 3px;
       max-width: 80%;
@@ -62,22 +63,22 @@
     }
 
     .cancel-btn {
-      background-color: #EBECF0;
-      color: #172B4D;
+      background-color: var(--tnm-bg-button-secondary);
+      color: var(--tnm-text-primary);
     }
 
     .cancel-btn:hover {
-      background-color: #DFE1E6;
+      background-color: var(--tnm-bg-button-secondary-hover);
     }
 
     .input-help {
       font-size: 12px;
-      color: #5E6C84;
+      color: var(--tnm-text-secondary);
       margin-top: 4px;
     }
 
     .error-message {
-      color: #CF513D;
+      color: var(--tnm-text-error);
       font-size: 12px;
       margin-top: 4px;
       display: none;

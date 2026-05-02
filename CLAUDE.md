@@ -63,6 +63,14 @@ views/
 └── settings.html       - Display settings (8h/24h) + cache management buttons
 ```
 
+### Theming (dark mode)
+
+Colors are centralized as CSS variables (`--tnm-*`) in [css/style.css](css/style.css). The light palette lives in `:root`; the dark palette overrides those variables inside `@media (prefers-color-scheme: dark)`. All view-level inline `<style>` blocks reference the variables — no per-view media queries.
+
+When adding new UI: use `var(--tnm-bg-primary | bg-secondary | bg-tertiary | text-primary | text-secondary | text-accent | text-error | border | overlay | button-primary | button-danger | ...)` instead of hex literals. Native form controls follow the theme via `color-scheme: light dark` on `:root`.
+
+Caveat: detection is via `prefers-color-scheme` (OS-level). If Trello ever exposes a manual theme toggle independent of the OS, we'd need to read `t.getContext().theme` and switch a `data-theme` attribute on `<body>`.
+
 ### Data Flow Examples
 
 **Opening a board with 10 cards** (badge display) - **v3.1 Optimized**:

@@ -5,17 +5,8 @@
 
 ## 🐛 Баги (упадут при использовании)
 
-### 1. Отсутствует `TnMStorage.resetAllData()`
-**Где вызывается:**
-- `views/settings.html:329` — кнопка "Delete All Data" (видна пользователю).
-
-**Что происходит:** при клике — `TypeError: TnMStorage.resetAllData is not a function`.
-
-**Что делать (на выбор):**
-- **a)** Реализовать функцию: каскадно удалить из Supabase `time_entries` → сбросить `time_minutes` в `cards` → инвалидировать кэш. Учесть, что `boards` и `board_settings` оставлять не нужно — иначе настройки `hours_per_day` обнулятся.
-- **b)** Просто убрать кнопку и подтверждающий диалог из `settings.html` (см. также пункт 6 — общий пересмотр экрана настроек).
-
-В `settings.html:327` уже стоит `// TODO: Добавить функцию для удаления данных из Supabase` — задача висит давно.
+### 1. ✅ "Delete All Data" удалён из `settings.html`
+Сама `TnMStorage.resetAllData()` нигде не была реализована — кнопка падала с `TypeError`. Закрыто вместе с п.9: вместо реализации деструктивной операции в UI поставлен инфо-блок с почтой для контакта (`zelyakin@gmail.com`). Юзеру, которому реально нужно почистить данные, проще написать в поддержку или дёрнуть `TRUNCATE` напрямую в Supabase SQL Editor — чем поддерживать UI с подтверждением, безопасностью от случайного клика и реальной каскадной очисткой.
 
 ### 2. ✅ `views/storage-stats.html` удалён
 Файл вызывал несуществующие `TnMStorage.getCardDataFromBoard()` и `TnMStorage.MAX_BOARD_ENTRIES`. Был рудиментом эпохи Trello Storage с лимитом 4 КБ на карточку — для Supabase эта метрика неактуальна.
@@ -102,53 +93,28 @@ allCards.forEach(c => this._cardDataCache.set(`badge_${c.trello_card_id}`, {
 - Размер ответа растёт линейно с числом карточек, но `time_minutes` — это int, ответ остаётся компактным даже для больших досок.
 - Trello может вызывать badge callback и для карточек, которых ещё нет в Supabase (новые карточки) — для них должен возвращаться `{ timeMinutes: 0 }`, что и так корректно работает через текущий fallback.
 
-#### 7.3. Объёмы передаваемой информации — выглядит уже хорошо, но проверить
-Все основные SELECT-ы уже используют явные списки полей (`?select=time_minutes,...`), `Prefer: return=minimal` стоит на мутациях. Что осталось проверить:
-- `ensureCard*()` всё ещё селектит legacy `total_*` (см. п.4 — пересекается с этой задачей).
-- В `getCardDataFull()` ([js/supabase-api.js:215](js/supabase-api.js:215)) запрашивается `created_at` и используется и как `id`, и как `date` — лишний раунд-трип данных, но это уже микрооптимизация.
-
 ---
 
 ## 🎨 Тёмная тема
 
-### 8. Power-Up не адаптирован под dark mode Trello
-**Симптом (со слов пользователей):** часть окон/надписей становится нечитаемой — либо тёмный текст на тёмном фоне, либо наоборот фоны popup'ов остаются белыми и выбиваются из общего вида Trello.
+### 8. ✅ Power-Up адаптирован под dark mode
 
-**Текущее состояние:**
-- Единственная поддержка темы — иконки `board-buttons` в [js/client.js:111-126](js/client.js:111) (раздельные `dark`/`light` SVG для Export и Stats).
-- Во всех view-файлах и в `css/style.css` цвета захардкожены под светлую тему:
-  - `color: #172B4D` (тёмный текст) — в `.confirmation-title`, `<h2>`, основной типографике.
-  - `background-color: white` — в `.confirmation-content` (диалоги подтверждения в `settings.html`, `card-detail.html`, `clear-cache.html`).
-  - `background-color: #F4F5F7` — в `.stats-overview`.
-  - `color: #5E6C84` / `#0079BF` / `#CF513D` — статусные/инфо-надписи.
-- Ни одного `@media (prefers-color-scheme: dark)` в проекте.
-- Не используются CSS-переменные темы Trello (`--ds-background-default`, `--ds-text` и т.п. из Atlassian Design System).
-
-**Что делать:**
-- **a)** Простой путь — добавить `@media (prefers-color-scheme: dark)` блоки в `css/style.css` и в inline-стили каждого view с переопределением фонов (`white` → тёмный) и текста (`#172B4D` → светлый). Минимум для проверки: confirmation-диалоги, `.stats-overview`, основная типографика.
-- **b)** Правильный путь — отказаться от хардкода цветов в пользу CSS-переменных Trello/ADS, чтобы стили автоматически следовали за темой контейнера. Список переменных: см. документацию Trello Power-Up + [Atlassian Design Tokens](https://atlassian.design/tokens/design-tokens).
-- Проверить все view: `card-detail.html`, `card-back.html`, `board-stats.html`, `export-time.html`, `settings.html` — у каждого свой блок `<style>` с собственными цветами, нужна сквозная унификация.
-- Не забыть про confirmation-диалоги с `background-color: white` — они особенно режут глаз в dark mode.
-- Протестировать в Trello с включённой dark theme на каждом popup'е.
+Цвета централизованы в CSS-переменных в [css/style.css](css/style.css) (`:root` блок), переключаются через `@media (prefers-color-scheme: dark)`. Палитра тёмного режима подобрана под Trello/Atlassian (`#1D2125 / #B6C2CF / #579DFF`). Все view-файлы (`card-detail.html`, `card-back.html`, `board-stats.html`, `export-time.html`, `settings.html`) используют `var(--tnm-*)` — без дублирования media-блоков по каждому файлу. Native form controls подхватывают тему через `color-scheme: light dark`. Все попапы проверены вручную в Trello с тёмной темой.
 
 ---
 
 ## 🎛 UX
 
-### 9. Пересмотреть экран настроек `views/settings.html` целиком
-По итогам анализа похоже, что половина кнопок там устарела или дублирует функционал. Кандидаты на удаление/пересмотр:
+### 9. ✅ Экран настроек пересмотрен
 
-| Кнопка | Текущее поведение | Проблема |
-|---|---|---|
-| **Save Settings** (8h/24h) | Работает корректно | Оставить — основная функция экрана |
-| **Clear Cache and Reload** | `localStorage.clear()` + `SupabaseAPI.clearCache()` + reload | `localStorage` Power-Up'ом не используется (см. CLAUDE.md, "Why not localStorage"). Reload и так чистит in-memory кэш. Кнопка избыточна. |
-| **Clear API Cache** | `SupabaseAPI.clearCache()` без reload | После очистки UI не обновляется → пользователь не видит эффекта. Сомнительная польза. |
-| **View Storage Statistics** | Открывает `storage-stats.html` | Сломан (см. п.2). Сама метрика "сколько байт занято" неактуальна — данные в Supabase, а не в Trello Storage с лимитом 4 КБ. |
-| **Delete All Data** | Падает с `TypeError` (см. п.1) | Либо реализовать, либо убрать. |
+Из [views/settings.html](views/settings.html) удалены:
+- **Clear Cache and Reload** — `localStorage.clear()` чистил пустое ведро (Power-Up в localStorage ничего не пишет), а follow-up reload и так пересоздавал in-memory Map'ы. Кнопка делала то же, что обычный F5 на вкладке Trello.
+- **Clear API Cache** — чистила те же 5 in-memory Map'ов без reload, но на экране настроек ничего, что от них зависит, не отображается → юзер видел тост "cache cleared" и… ничего. Плюс TTL и так 60 секунд.
+- **Delete All Data** — падала с `TypeError` (см. п.1). Удалена вместе с confirmation-диалогом, обработчиками, стилями `.mod-danger`, `.warning-text`, `.confirmation-*`, `.cancel-btn`.
 
-**Предложение:** оставить только секцию "Display Settings" (8h/24h). Всё остальное либо удалить, либо переработать (например, "Delete All Data" может быть полезна, но требует реализации).
+Снизу добавлен нейтральный инфо-блок "Data Removal" с предложением написать на `zelyakin@gmail.com` для полного удаления данных. Высота popup в [js/client.js:144](js/client.js:144) поднята с 300 до 360 — старая высота уже не вмещала контент полностью (попап скроллился), новая компоновка влезает без скролла.
 
-После чистки экран станет компактным — высота popup в `client.js:144` (`height: 300`) скорее всего станет избыточной.
+Финальный экран: Display Settings (select 8h/24h + Save) → separator → Data Removal (контактный текст).
 
 ---
 

@@ -38,108 +38,59 @@
     }
 
     .mod-primary {
-      background-color: #0079BF;
+      background-color: var(--tnm-button-primary);
     }
 
     .mod-primary:hover {
-      background-color: #026AA7;
-    }
-
-    .mod-danger {
-      background-color: #CF513D;
-    }
-
-    .mod-danger:hover {
-      background-color: #B04632;
+      background-color: var(--tnm-button-primary-hover);
     }
 
     #status-message {
       margin-top: 16px;
-      color: #0079BF;
+      color: var(--tnm-text-accent);
       display: none;
       text-align: center;
     }
 
     #error-message {
       margin-top: 16px;
-      color: #CF513D;
+      color: var(--tnm-text-error);
       display: none;
       text-align: center;
     }
 
-    .section-separator {
-      margin: 24px 0;
-      border-top: 1px solid #DFE1E6;
-      position: relative;
-    }
-
-    .warning-text {
-      color: #CF513D;
-      font-weight: bold;
-      font-size: 12px;
-      margin-top: 8px;
-      text-align: center;
-    }
-
     .info-text {
-      color: #5E6C84;
+      color: var(--tnm-text-secondary);
       font-size: 12px;
       margin-top: 8px;
       text-align: center;
       font-style: italic;
     }
 
-    /* Styles for confirmation dialog */
-    .confirmation-dialog {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-    }
-
-    .confirmation-content {
-      background-color: white;
+    .data-removal {
+      margin-top: 32px;
       padding: 16px;
+      background-color: var(--tnm-bg-secondary);
       border-radius: 3px;
-      max-width: 80%;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
     }
 
-    .confirmation-title {
-      font-size: 16px;
-      font-weight: bold;
-      margin-bottom: 12px;
+    .data-removal h3 {
+      margin-bottom: 8px;
     }
 
-    .confirmation-text {
-      margin-bottom: 16px;
-    }
-
-    .confirmation-buttons {
-      margin-top: 16px;
-      display: flex;
-      justify-content: flex-end;
-    }
-
-    .confirmation-buttons button {
-      margin-left: 8px;
-      width: auto;
+    .contact-text {
+      color: var(--tnm-text-secondary);
+      font-size: 13px;
       margin-bottom: 0;
     }
 
-    .cancel-btn {
-      background-color: #EBECF0;
-      color: #172B4D !important;
+    .contact-text a {
+      color: var(--tnm-text-accent);
+      text-decoration: none;
     }
 
-    .cancel-btn:hover {
-      background-color: #DFE1E6;
+    .contact-text a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -163,44 +114,16 @@
     <button id="save-settings-btn" class="mod-primary">Save Settings</button>
   </div>
 
-  <div class="section-separator"></div>
-
-  <h3>Cache Management</h3>
-  <p>Manage Power-Up cache and data:</p>
-
-  <div class="button-container">
-    <button id="clear-cache-btn" class="mod-primary">Clear Cache and Reload</button>
+  <div class="data-removal">
+    <h3>Data Removal</h3>
+    <p class="contact-text">
+      If you would like to permanently delete all of your data from this Power-Up,
+      please contact us at <a href="mailto:zelyakin@gmail.com">zelyakin@gmail.com</a>.
+    </p>
   </div>
 
-  <div class="button-container">
-    <button id="clear-api-cache-btn" class="mod-primary">Clear API Cache</button>
-  </div>
-
-  <div class="section-separator"></div>
-
-  <h2>Complete Data Reset</h2>
-  <p>Delete all time tracking data from all cards on the board:</p>
-  <div class="button-container">
-    <button id="reset-all-data-btn" class="mod-danger">Delete All Data</button>
-  </div>
-  <p class="warning-text">WARNING! This action is irreversible and will delete all time tracking data from all cards on the board.</p>
-  <p class="info-text">Note: This will reset both Supabase and local data.</p>
-
-  <p id="status-message">Cache cleared. Reloading...</p>
+  <p id="status-message"></p>
   <p id="error-message"></p>
-</div>
-
-<!-- Complete reset confirmation dialog -->
-<div id="confirmation-dialog" class="confirmation-dialog" style="display: none;">
-  <div class="confirmation-content">
-    <div class="confirmation-title">T&M Power-Up Reset</div>
-    <p class="confirmation-text">Are you sure you want to delete ALL time tracking data from ALL cards on the board?</p>
-    <p class="confirmation-text">This will affect both Supabase and local data. This action cannot be undone!</p>
-    <div class="confirmation-buttons">
-      <button class="cancel-btn" id="cancel-reset">Cancel</button>
-      <button class="mod-danger" id="confirm-reset">Delete</button>
-    </div>
-  </div>
 </div>
 
 <script src="../js/supabase-api.js"></script>
@@ -250,83 +173,6 @@
         document.getElementById('error-message').style.display = 'none';
       }, 3000);
     }
-  });
-
-  // Handler for cache clearing button
-  document.getElementById('clear-cache-btn').addEventListener('click', function() {
-    // Clear local temporary cache
-    localStorage.clear();
-
-    // Clear Supabase API cache
-    if (window.SupabaseAPI) {
-      window.SupabaseAPI.clearCache();
-    }
-
-    // Show status message
-    document.getElementById('status-message').style.display = 'block';
-
-    // Close window and reload page after 2 seconds
-    setTimeout(function() {
-      t.closePopup();
-      window.location.reload(true);
-    }, 2000);
-  });
-
-  // Handler for API cache clearing button
-  document.getElementById('clear-api-cache-btn').addEventListener('click', function() {
-    if (window.SupabaseAPI) {
-      window.SupabaseAPI.clearCache();
-
-      // Show status message
-      document.getElementById('status-message').style.display = 'block';
-      document.getElementById('status-message').textContent = 'API cache cleared successfully';
-
-      setTimeout(() => {
-        document.getElementById('status-message').style.display = 'none';
-      }, 3000);
-    }
-  });
-
-  // Handler for reset all data button
-  document.getElementById('reset-all-data-btn').addEventListener('click', function() {
-    // Show confirmation dialog
-    document.getElementById('confirmation-dialog').style.display = 'flex';
-  });
-
-  // Handler for cancel button in confirmation dialog
-  document.getElementById('cancel-reset').addEventListener('click', function() {
-    document.getElementById('confirmation-dialog').style.display = 'none';
-  });
-
-  // Handler for confirm button in confirmation dialog
-  document.getElementById('confirm-reset').addEventListener('click', function() {
-    // Hide confirmation dialog
-    document.getElementById('confirmation-dialog').style.display = 'none';
-
-    // Show status message
-    document.getElementById('status-message').style.display = 'block';
-    document.getElementById('status-message').textContent = 'Deleting all data...';
-
-    // TODO: Добавить функцию для удаления данных из Supabase
-    // Пока что удаляем только локальные данные
-    TnMStorage.resetAllData(t)
-            .then(function() {
-              document.getElementById('status-message').textContent = 'Local data deleted. Note: Supabase data cleanup should be done manually. Reloading...';
-
-              // Close window and reload page after 3 seconds
-              setTimeout(function() {
-                t.closePopup();
-                window.location.reload(true);
-              }, 3000);
-            })
-            .catch(function(error) {
-              console.error('Error deleting data:', error);
-              document.getElementById('status-message').style.display = 'none';
-
-              // Show error message
-              document.getElementById('error-message').style.display = 'block';
-              document.getElementById('error-message').textContent = 'Error deleting data: ' + error.message;
-            });
   });
 
   // Hide messages on load and load settings
