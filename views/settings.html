@@ -38,43 +38,43 @@
     }
 
     .mod-primary {
-      background-color: #0079BF;
+      background-color: var(--tnm-button-primary);
     }
 
     .mod-primary:hover {
-      background-color: #026AA7;
+      background-color: var(--tnm-button-primary-hover);
     }
 
     .mod-danger {
-      background-color: #CF513D;
+      background-color: var(--tnm-button-danger);
     }
 
     .mod-danger:hover {
-      background-color: #B04632;
+      background-color: var(--tnm-button-danger-hover);
     }
 
     #status-message {
       margin-top: 16px;
-      color: #0079BF;
+      color: var(--tnm-text-accent);
       display: none;
       text-align: center;
     }
 
     #error-message {
       margin-top: 16px;
-      color: #CF513D;
+      color: var(--tnm-text-error);
       display: none;
       text-align: center;
     }
 
     .section-separator {
       margin: 24px 0;
-      border-top: 1px solid #DFE1E6;
+      border-top: 1px solid var(--tnm-border);
       position: relative;
     }
 
     .warning-text {
-      color: #CF513D;
+      color: var(--tnm-text-error);
       font-weight: bold;
       font-size: 12px;
       margin-top: 8px;
@@ -82,7 +82,7 @@
     }
 
     .info-text {
-      color: #5E6C84;
+      color: var(--tnm-text-secondary);
       font-size: 12px;
       margin-top: 8px;
       text-align: center;
@@ -96,7 +96,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(0, 0, 0, 0.5);
+      background-color: var(--tnm-overlay);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -104,7 +104,8 @@
     }
 
     .confirmation-content {
-      background-color: white;
+      background-color: var(--tnm-bg-primary);
+      color: var(--tnm-text-primary);
       padding: 16px;
       border-radius: 3px;
       max-width: 80%;
@@ -134,12 +135,12 @@
     }
 
     .cancel-btn {
-      background-color: #EBECF0;
-      color: #172B4D !important;
+      background-color: var(--tnm-bg-button-secondary);
+      color: var(--tnm-text-primary) !important;
     }
 
     .cancel-btn:hover {
-      background-color: #DFE1E6;
+      background-color: var(--tnm-bg-button-secondary-hover);
     }
   </style>
 </head>

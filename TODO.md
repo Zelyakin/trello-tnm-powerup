@@ -111,25 +111,13 @@ allCards.forEach(c => this._cardDataCache.set(`badge_${c.trello_card_id}`, {
 
 ## 🎨 Тёмная тема
 
-### 8. Power-Up не адаптирован под dark mode Trello
-**Симптом (со слов пользователей):** часть окон/надписей становится нечитаемой — либо тёмный текст на тёмном фоне, либо наоборот фоны popup'ов остаются белыми и выбиваются из общего вида Trello.
+### 8. ✅ Power-Up адаптирован под dark mode
 
-**Текущее состояние:**
-- Единственная поддержка темы — иконки `board-buttons` в [js/client.js:111-126](js/client.js:111) (раздельные `dark`/`light` SVG для Export и Stats).
-- Во всех view-файлах и в `css/style.css` цвета захардкожены под светлую тему:
-  - `color: #172B4D` (тёмный текст) — в `.confirmation-title`, `<h2>`, основной типографике.
-  - `background-color: white` — в `.confirmation-content` (диалоги подтверждения в `settings.html`, `card-detail.html`, `clear-cache.html`).
-  - `background-color: #F4F5F7` — в `.stats-overview`.
-  - `color: #5E6C84` / `#0079BF` / `#CF513D` — статусные/инфо-надписи.
-- Ни одного `@media (prefers-color-scheme: dark)` в проекте.
-- Не используются CSS-переменные темы Trello (`--ds-background-default`, `--ds-text` и т.п. из Atlassian Design System).
+Цвета централизованы в CSS-переменных в [css/style.css](css/style.css) (`:root` блок), переключаются через `@media (prefers-color-scheme: dark)`. Палитра тёмного режима подобрана под Trello/Atlassian (`#1D2125 / #B6C2CF / #579DFF`).
 
-**Что делать:**
-- **a)** Простой путь — добавить `@media (prefers-color-scheme: dark)` блоки в `css/style.css` и в inline-стили каждого view с переопределением фонов (`white` → тёмный) и текста (`#172B4D` → светлый). Минимум для проверки: confirmation-диалоги, `.stats-overview`, основная типографика.
-- **b)** Правильный путь — отказаться от хардкода цветов в пользу CSS-переменных Trello/ADS, чтобы стили автоматически следовали за темой контейнера. Список переменных: см. документацию Trello Power-Up + [Atlassian Design Tokens](https://atlassian.design/tokens/design-tokens).
-- Проверить все view: `card-detail.html`, `card-back.html`, `board-stats.html`, `export-time.html`, `settings.html` — у каждого свой блок `<style>` с собственными цветами, нужна сквозная унификация.
-- Не забыть про confirmation-диалоги с `background-color: white` — они особенно режут глаз в dark mode.
-- Протестировать в Trello с включённой dark theme на каждом popup'е.
+Все view-файлы (`card-detail.html`, `card-back.html`, `board-stats.html`, `export-time.html`, `settings.html`) переключены с хардкода на `var(--tnm-*)` — без дублирования media-блоков по каждому файлу. Native form controls (date pickers и т.п.) подхватывают тему через `color-scheme: light dark`.
+
+Что осталось проверить вручную: открыть каждый popup в Trello с включённой dark theme и убедиться, что нигде не режет глаз. Если Trello использует свой собственный toggle тёмной темы, не привязанный к OS-уровню — `prefers-color-scheme` его не поймает; в этом случае добавить чтение `t.getContext().theme` и `data-theme="dark"` атрибут на `body`.
 
 ---
 

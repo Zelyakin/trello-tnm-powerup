@@ -15,11 +15,11 @@
         h2 {
             margin-top: 0;
             margin-bottom: 16px;
-            color: #172B4D;
+            color: var(--tnm-text-primary);
         }
 
         .stats-overview {
-            background-color: #F4F5F7;
+            background-color: var(--tnm-bg-secondary);
             border-radius: 3px;
             padding: 16px;
             margin-bottom: 20px;
@@ -30,14 +30,14 @@
             justify-content: space-between;
             margin-bottom: 12px;
             padding: 8px 0;
-            border-bottom: 1px solid #DFE1E6;
+            border-bottom: 1px solid var(--tnm-border);
         }
 
         .stats-row:last-child {
             border-bottom: none;
             font-weight: bold;
             font-size: 16px;
-            color: #0079BF;
+            color: var(--tnm-text-accent);
         }
 
         .stats-label {
@@ -45,7 +45,7 @@
         }
 
         .stats-value {
-            color: #0079BF;
+            color: var(--tnm-text-accent);
         }
 
         .period-selector {
@@ -60,8 +60,8 @@
 
         .period-btn {
             padding: 6px 12px;
-            background-color: #EBECF0;
-            color: #172B4D;
+            background-color: var(--tnm-bg-button-secondary);
+            color: var(--tnm-text-primary);
             border: none;
             border-radius: 3px;
             cursor: pointer;
@@ -69,22 +69,22 @@
         }
 
         .period-btn.active {
-            background-color: #0079BF;
+            background-color: var(--tnm-button-primary);
             color: white;
         }
 
         .period-btn:hover:not(.active) {
-            background-color: #DFE1E6;
+            background-color: var(--tnm-bg-button-secondary-hover);
         }
 
         .loading {
             text-align: center;
-            color: #5E6C84;
+            color: var(--tnm-text-secondary);
             padding: 20px;
         }
 
         .error {
-            color: #CF513D;
+            color: var(--tnm-text-error);
             text-align: center;
             padding: 20px;
         }
@@ -98,9 +98,9 @@
             justify-content: space-between;
             padding: 8px 12px;
             margin-bottom: 4px;
-            background-color: #FAFBFC;
+            background-color: var(--tnm-bg-tertiary);
             border-radius: 3px;
-            border: 1px solid #DFE1E6;
+            border: 1px solid var(--tnm-border);
         }
 
         .contributor-name {
@@ -108,12 +108,18 @@
         }
 
         .contributor-time {
-            color: #0079BF;
+            color: var(--tnm-text-accent);
         }
 
         .refresh-btn {
             margin-bottom: 20px;
             width: 100%;
+        }
+
+        .empty-contributors {
+            text-align: center;
+            color: var(--tnm-text-secondary);
+            font-style: italic;
         }
     </style>
 </head>
@@ -298,7 +304,7 @@
             contributorsList.innerHTML = '';
 
             if (stats.contributors.length === 0) {
-                contributorsList.innerHTML = '<div style="text-align: center; color: #5E6C84; font-style: italic;">No data for selected period</div>';
+                contributorsList.innerHTML = '<div class="empty-contributors">No data for selected period</div>';
             } else {
                 // contributors array is already sorted and limited to top 3 by the API
                 stats.contributors.forEach(({ memberName, totalMinutes }) => {
