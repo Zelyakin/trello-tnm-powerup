@@ -108,13 +108,14 @@ addTimeRecord(days, hours, minutes)
   → invalidateCardCache()
 ```
 
-**Board statistics (optimized v3.0)**:
+**Board statistics (optimized v3.2)**:
 ```
 getBoardStats(startDate, endDate)
-  → GET /boards?select=id&trello_board_id=eq.{id}
-  → GET /cards?select=id,trello_card_id&board_id=eq.{board_id}
-  → GET /time_entries?select=time_minutes,member_name,card_id&card_id=in.(id1,id2,...)&work_date=gte.{start}&work_date=lte.{end}
-  ✓ Single batch query for ALL cards (3 requests total, not N+2!)
+  → GET /boards?select=id&trello_board_id=eq.{id}                                    (cached after 1st call)
+  → GET /time_entries?select=time_minutes,member_name,card_id,cards!inner(id)
+        &cards.board_id=eq.{board_id}&work_date=gte.{start}&work_date=lte.{end}
+  ✓ Single PostgREST embedded JOIN — no separate /cards fetch, no in.(cardIds), no URL length limit.
+  ✓ 2 requests cold / 1 request warm (was 3 / 2 before v3.2).
 ```
 
 ## Critical Implementation Details
@@ -272,29 +273,31 @@ async getBoardSettings(trelloBoardId) {
 
 **Benefit**: 10 parallel card loads make **1 request** instead of 10 duplicate requests
 
-### 8. Optimized Board Statistics (v3.0)
+### 8. Optimized Board Statistics (v3.2)
 
-Instead of fetching each card's data individually, use a single batch query:
+Statistics aggregate `time_entries` (totals, active cards, contributors) — no card-level data is needed in the response. PostgREST's embedded resource filter lets us push the board-membership check to the server without a separate `/cards` round-trip and without the `in.(cardIds)` URL-length limit.
 
-**Old approach** (N+2 requests):
+**Evolution**:
+- v2.x — N requests (one per card, sequential)
+- v3.0 — 3 requests via `card_id=in.(cardIds)` after fetching `/cards` first
+- **v3.2 — 1 request (warm) via embedded JOIN**:
+
 ```javascript
-for (const card of cards) {
-  const entries = await GET /time_entries?card_id=eq.{card.id}
-} // N requests for N cards!
+const timeEntries = await GET
+  /time_entries
+    ?select=time_minutes,member_name,card_id,cards!inner(id)
+    &cards.board_id=eq.{boardId}
+    &work_date=gte.{start}&work_date=lte.{end}
+// `cards!inner(id)` = INNER JOIN trigger (id is throwaway, response stays compact)
+// `cards.board_id=eq.X` = filter on the embedded resource
 ```
 
-**New approach** (3 requests):
-```javascript
-const cards = await GET /cards?board_id=eq.{board_id}
-const cardIds = cards.map(c => c.id);
-const allEntries = await GET /time_entries?card_id=in.(${cardIds.join(',')})
-// Single query fetches ALL entries for ALL cards!
-```
+**Benefits over v3.0**:
+- Removes the separate `/cards` fetch entirely (stats don't need the card list — empty cards contribute zero anyway)
+- No `in.(cardIds)` ⇒ no URL length limit, scales to boards of any size
+- Empty board / empty period → `entries=[]` → naturally zeroed-out result, no special early-return needed
 
-**Benefits**:
-- Scales O(1) instead of O(N) for boards with many cards
-- Reduces latency (3 sequential requests vs N sequential requests)
-- Less load on Supabase API
+The same embedded-JOIN pattern is used in `getAllDataForExport()` (with a parallel `/cards` fetch — export needs to list empty cards for the "Include empty" toggle).
 
 ## Deployment
 
@@ -323,7 +326,8 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
   - 1 × `/boards` (cached across all cards)
   - 1 × `/board_settings` (cached across all cards)
 - Opening card detail: **2 requests** with warm cache (settings already cached from badges); up to 4 with fully cold cache. Was 4 before v3.0.
-- Board statistics: **3 requests** (was N+2 before v3.0)
+- Board statistics: **1 request warm / 2 cold** (was 3 in v3.0–v3.1, was N+2 before v3.0)
+- Export (any board size): **2 parallel requests** (was N+1 sequential before v3.2)
 - Changing settings (8h ↔ 24h): **1 request** (was ~11 before v3.1)
 - Cache TTL: 60 seconds for all caches
 - Settings change: selective cache invalidation (only settings, not card data)
@@ -336,7 +340,7 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
 - Selective field queries (`?select=field1,field2`)
 - `Prefer: return=minimal` header on mutations
 - Separate methods for badge vs. full data
-- Batch queries with `in.(ids)` for statistics
+- PostgREST embedded resource filters (`cards!inner(...) + cards.board_id=eq.X`) for statistics and export — server-side JOIN, no `in.(ids)` URL bloat
 - Settings-aware caching with timestamp tracking
 
 **Optimization Impact**:

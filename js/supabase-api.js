@@ -70,30 +70,6 @@ const SupabaseAPI = {
         }
     },
 
-    // Получить или создать карточку (БЕЗ board_id!)
-    async ensureCard(trelloCardId) {
-        try {
-            // Ищем карточку только по trello_card_id (он уникален глобально)
-            const cards = await SupabaseAPI.request(
-                `cards?select=id,trello_card_id&trello_card_id=eq.${trelloCardId}`
-            );
-
-            if (cards.length > 0) {
-                return cards[0];
-            }
-
-            // Если карточки нет - создаем
-            // НО! Нам нужен board_id для создания из-за foreign key
-            // Поэтому придется получить boardId из контекста
-            // Это единственное место где он нужен
-            throw new Error('Card not found and cannot be created without board context');
-
-        } catch (error) {
-            console.error('Error ensuring card:', error);
-            throw error;
-        }
-    },
-
     // Получить или создать карточку с контекстом доски
     async ensureCardWithBoard(trelloBoardId, trelloCardId) {
         try {
@@ -389,35 +365,41 @@ const SupabaseAPI = {
             // Используем кэшированный метод для получения boardId
             const supabaseBoardId = await this.getBoardId(boardId);
 
-            // Получаем все карточки доски
-            const cards = await this.request(
-                `cards?select=id,trello_card_id&board_id=eq.${supabaseBoardId}`
-            );
+            // Запрос записей времени через embedded resource: фильтруем сразу по board_id
+            // через FK time_entries.card_id → cards.id, минуя промежуточный список cardIds.
+            // cards!inner — INNER JOIN, гарантирует наличие cards.trello_card_id в ответе.
+            let entriesQuery = `time_entries?select=time_minutes,description,work_date,member_name,cards!inner(trello_card_id)&cards.board_id=eq.${supabaseBoardId}`;
+            if (startDate) entriesQuery += `&work_date=gte.${startDate}`;
+            if (endDate) entriesQuery += `&work_date=lte.${endDate}`;
+            entriesQuery += '&order=work_date.desc';
 
-            const exportData = [];
+            // Параллельно: список всех карточек доски (чтобы отдать пустые с timeEntries: [])
+            // и записи времени за период. Запросы независимы — Promise.all.
+            const [cards, allEntries] = await Promise.all([
+                this.request(`cards?select=trello_card_id&board_id=eq.${supabaseBoardId}`),
+                this.request(entriesQuery)
+            ]);
 
-            for (const card of cards) {
-                let timeEntriesQuery = `time_entries?select=time_minutes,description,work_date,member_name&card_id=eq.${card.id}`;
-
-                if (startDate) {
-                    timeEntriesQuery += `&work_date=gte.${startDate}`;
+            // Группируем записи по trello_card_id (берём из вложенного cards)
+            const entriesByCard = new Map();
+            allEntries.forEach(entry => {
+                const trelloCardId = entry.cards.trello_card_id;
+                if (!entriesByCard.has(trelloCardId)) {
+                    entriesByCard.set(trelloCardId, []);
                 }
-
-                if (endDate) {
-                    timeEntriesQuery += `&work_date=lte.${endDate}`;
-                }
-
-                timeEntriesQuery += '&order=work_date.desc';
-
-                const timeEntries = await SupabaseAPI.request(timeEntriesQuery);
-
-                exportData.push({
-                    cardId: card.trello_card_id,
-                    timeEntries: timeEntries
+                // Убираем вложенный cards из payload — наружу отдаём только нужные поля
+                entriesByCard.get(trelloCardId).push({
+                    time_minutes: entry.time_minutes,
+                    description: entry.description,
+                    work_date: entry.work_date,
+                    member_name: entry.member_name
                 });
-            }
+            });
 
-            return exportData;
+            return cards.map(card => ({
+                cardId: card.trello_card_id,
+                timeEntries: entriesByCard.get(card.trello_card_id) || []
+            }));
         } catch (error) {
             console.error('Error getting export data:', error);
             throw error;
@@ -432,24 +414,12 @@ const SupabaseAPI = {
             // Используем кэшированный метод для получения boardId
             const boardId = await this.getBoardId(trelloBoardId);
 
-            // Получаем все карточки доски
-            const cards = await this.request(
-                `cards?select=id,trello_card_id&board_id=eq.${boardId}`
-            );
-
-            if (cards.length === 0) {
-                return {
-                    totalMinutes: 0,
-                    totalEntries: 0,
-                    activeCards: 0,
-                    contributors: []
-                };
-            }
-
-            const cardIds = cards.map(c => c.id);
-
-            // Строим запрос для получения всех записей за период
-            let query = `time_entries?select=time_minutes,member_name,card_id&card_id=in.(${cardIds.join(',')})`;
+            // Запрос записей через embedded resource: фильтруем сразу по board_id
+            // через FK time_entries.card_id → cards.id. Список карточек отдельно
+            // не нужен — все метрики (totals, activeCards, contributors) считаются
+            // из самих entries. cards!inner(id) подключает INNER JOIN; ответ почти
+            // не растёт. Пустая доска / пустой период → entries=[] → корректный нулевой результат.
+            let query = `time_entries?select=time_minutes,member_name,card_id,cards!inner(id)&cards.board_id=eq.${boardId}`;
 
             if (startDate) {
                 query += `&work_date=gte.${startDate}`;

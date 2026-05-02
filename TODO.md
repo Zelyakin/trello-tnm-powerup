@@ -26,10 +26,8 @@
 
 ## 🧹 Мёртвый код
 
-### 3. `SupabaseAPI.ensureCard()` — заглушка, всегда бросает исключение
-`js/supabase-api.js:74-95`. Метод определён, но безусловно бросает `Error('Card not found and cannot be created without board context')`. Нигде не вызывается — везде используется `ensureCardWithBoard()`.
-
-**Что делать:** удалить целиком.
+### 3. ✅ `SupabaseAPI.ensureCard()` — удалён
+Метод-заглушка, который безусловно бросал `Error('Card not found and cannot be created without board context')`. Был архитектурным заделом эпохи перехода на `trello_card_id` как глобально уникальный ключ (коммит `7fb49c9`), но не выстрелил — все места чтения работают через прямые `GET /cards?...`, а мутации используют `ensureCardWithBoard()`. Удалён из [js/supabase-api.js](js/supabase-api.js).
 
 ### 4. Legacy-поля в схеме БД (колонки можно удалять)
 **Код** ✅ — больше не селектит и не пишет legacy-поля. После правки `ensureCard*()` в [js/supabase-api.js](js/supabase-api.js) ни одной ссылки на `total_*` (cards) и `days/hours/minutes` (time_entries) в SELECT/INSERT/PATCH не осталось. Чтение `cardData.days/hours/minutes` из удалённого `storage-stats.html` тоже ушло вместе с файлом (см. п.2).
@@ -70,38 +68,17 @@ ALTER TABLE time_entries
 ## ⚡ Оптимизация запросов к Supabase
 
 ### 7. Перевести оставшиеся запросы на batch-режим
-В прошлой итерации мы уже сильно сократили число запросов (см. CLAUDE.md "Performance Notes" — с 48 до 12 на загрузку доски, `getBoardStats()` с N+2 до 3). Но часть мест осталась с N+1 паттерном или избыточными вызовами.
+В прошлой итерации мы уже сильно сократили число запросов (см. CLAUDE.md "Performance Notes" — с 48 до 12 на загрузку доски). Но часть мест оставалась с N+1 паттерном или избыточными вызовами.
 
-#### 7.1. `getAllDataForExport()` — N+1 в чистом виде
-[js/supabase-api.js:385-425](js/supabase-api.js:385) — после получения списка карточек идёт **последовательный** цикл:
-```javascript
-for (const card of cards) {
-    const timeEntries = await SupabaseAPI.request(`time_entries?...&card_id=eq.${card.id}`);
-    exportData.push({ cardId: card.trello_card_id, timeEntries });
-}
-```
-Для доски на 50 карточек = **51 запрос** последовательно (заметная задержка перед скачиванием CSV).
+#### 7.1. ✅ `getAllDataForExport()` — устранён N+1
+Было: после `GET /cards` шёл **последовательный** цикл `for (const card of cards) { await GET /time_entries?card_id=eq.{card.id} }` — для доски на 50 карточек 51 запрос подряд.
 
-**Решение** — тот же приём, что в `getBoardStats()`:
-```javascript
-const cardIds = cards.map(c => c.id);
-const allEntries = await this.request(
-  `time_entries?select=time_minutes,description,work_date,member_name,card_id&card_id=in.(${cardIds.join(',')})&work_date=gte.${start}&work_date=lte.${end}&order=work_date.desc`
-);
-// Сгруппировать на клиенте по card_id
-const byCard = new Map();
-allEntries.forEach(e => {
-  if (!byCard.has(e.card_id)) byCard.set(e.card_id, []);
-  byCard.get(e.card_id).push(e);
-});
-const exportData = cards.map(c => ({
-  cardId: c.trello_card_id,
-  timeEntries: byCard.get(c.id) || []
-}));
-```
-Итог: **2 запроса вместо N+1** независимо от размера доски.
+Стало: 2 **параллельных** запроса (`Promise.all`) — список карточек и записи времени через PostgREST embedded resource (`cards!inner(trello_card_id) + cards.board_id=eq.X`). JOIN выполняется на стороне Supabase, никаких `in.(cardIds)` → нет лимита длины URL независимо от размера доски. Группировка по `trello_card_id` на клиенте, UUID Supabase наружу не утекают. Пустые карточки сохраняются как `timeEntries: []` (для UI-флага "Include empty cards").
 
-⚠️ Нюанс: при очень большом числе карточек `in.(...)` может упереться в лимит длины URL (~8 КБ у PostgREST по умолчанию). Если на досках бывает >500 карточек — стоит чанковать `cardIds` пачками по ~200 и параллелить через `Promise.all`. Для типичных досок не актуально.
+#### 7.1.1. ✅ `getBoardStats()` — снят URL-лимит и ушёл лишний запрос
+Было: 3 запроса (`/boards` → `/cards` → `/time_entries` с `in.(cardIds)`). При >500 карточках на доске `in.(...)` упирался в лимит длины URL у PostgREST (~8 КБ).
+
+Стало: тот же приём, что и в 7.1, но даже агрессивнее — `/cards` вообще не нужен (статистика считается только из entries: totals, distinct card_id, contributors). 1 запрос к `/time_entries` через embedded JOIN (`cards!inner(id) + cards.board_id=eq.X`). Пустая доска / пустой период → `entries=[]` → корректный нулевой ответ без специального early-return. **Итог: 1 запрос warm / 2 cold.**
 
 #### 7.2. Бейджи: N запросов на N карточек (потенциальная оптимизация)
 [js/client.js:22-41](js/client.js:22) — Trello вызывает callback `card-badges` отдельно для каждой карточки, и каждый вызов делает свой `GET /cards?select=time_minutes&trello_card_id=eq.{id}`. Для доски на 100 карточек = 100 запросов к `/cards`.
