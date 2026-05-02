@@ -141,7 +141,7 @@ TrelloPowerUp.initialize({
         return t.popup({
             title: 'T&M Settings',
             url: './views/settings.html',
-            height: 300
+            height: 360
         });
     },
 
