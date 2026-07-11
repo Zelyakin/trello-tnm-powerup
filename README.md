@@ -133,10 +133,6 @@ CREATE TABLE cards (
   trello_card_id TEXT UNIQUE NOT NULL,
   board_id UUID REFERENCES boards(id),
   time_minutes INTEGER DEFAULT 0,
-  -- Legacy fields (deprecated, keep for backward compatibility)
-  total_days INTEGER DEFAULT 0,
-  total_hours INTEGER DEFAULT 0,
-  total_minutes INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -148,10 +144,6 @@ CREATE TABLE time_entries (
   trello_member_id TEXT,
   member_name TEXT,
   time_minutes INTEGER DEFAULT 0,
-  -- Legacy fields (deprecated, keep for backward compatibility)
-  days INTEGER DEFAULT 0,
-  hours INTEGER DEFAULT 0,
-  minutes INTEGER DEFAULT 0,
   description TEXT,
   work_date DATE,
   trello_entry_id BIGINT,
@@ -367,7 +359,7 @@ The `board_id` is only needed when creating a new card record.
 - Added `board_settings` table with `hours_per_day` constraint
 - Changed `trello_board_id` type from TEXT to UUID
 - Migrated all existing data from d/h/m to minutes (8h conversion)
-- Kept legacy fields for backward compatibility
+- Kept legacy d/h/m fields for backward compatibility during the transition — dropped 2026-07-11 once the minute-based code was live in prod
 
 **Performance improvements:**
 - Board stats: 2-3 requests (was N+2 for N cards)

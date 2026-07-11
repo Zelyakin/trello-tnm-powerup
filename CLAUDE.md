@@ -26,9 +26,6 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
    - `cards` table stores **pre-aggregated totals** in `time_minutes` field
    - Individual time entries stored in `time_entries` with `time_minutes` field
    - `board_settings` stores per-board `hours_per_day` configuration (8 or 24)
-   - Legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and
-     `days`/`hours`/`minutes` columns in `time_entries` still exist in the schema (DEFAULT 0)
-     but are no longer selected, written, or read by the code. Safe to drop — see `TODO.md`.
 
 2. **In-Memory Cache** (`supabase-api.js`) - **v3.1 Multi-Level Caching**
    - **Card Data Cache**: TTL-based (60s) for individual card time data
@@ -416,7 +413,7 @@ If modifying database schema:
 2. Added `board_settings` table with `hours_per_day` constraint (8 or 24)
 3. Changed `trello_board_id` type from TEXT to UUID in `boards` table
 4. Migrated all existing data: `time_minutes = (days × 8 × 60) + (hours × 60) + minutes`
-5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and `days`/`hours`/`minutes` columns in `time_entries` for backward compatibility (no longer touched by code — pending DB cleanup, see `TODO.md`)
+5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and `days`/`hours`/`minutes` columns in `time_entries` for backward compatibility during the transition. **Dropped 2026-07-11** once the minute-based code was live in prod (see "Future cleanup" below)
 
 **Code changes**:
 - All storage/display now uses `time_minutes` + `hours_per_day` parameter
@@ -424,10 +421,10 @@ If modifying database schema:
 - Optimized `getBoardStats()` to use batch `in.(cardIds)` query
 - Added `formatTime()` and `parseTimeToMinutes()` utilities in `storage.js`
 
-**Future cleanup** (see `TODO.md`):
+**Future cleanup** (completed):
 - ✅ Stopped selecting legacy `total_*` columns in `ensureCard*()` queries
-- Drop legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table
-- Drop legacy `days`/`hours`/`minutes` columns from `time_entries` table
+- ✅ Dropped legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table (2026-07-11)
+- ✅ Dropped legacy `days`/`hours`/`minutes` columns from `time_entries` table (2026-07-11)
 
 ### Version 3.1 (January 2026) - Advanced Caching & Race Condition Protection
 

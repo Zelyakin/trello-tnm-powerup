@@ -20,29 +20,14 @@
 ### 3. ✅ `SupabaseAPI.ensureCard()` — удалён
 Метод-заглушка, который безусловно бросал `Error('Card not found and cannot be created without board context')`. Был архитектурным заделом эпохи перехода на `trello_card_id` как глобально уникальный ключ (коммит `7fb49c9`), но не выстрелил — все места чтения работают через прямые `GET /cards?...`, а мутации используют `ensureCardWithBoard()`. Удалён из [js/supabase-api.js](js/supabase-api.js).
 
-### 4. Legacy-поля в схеме БД (колонки можно удалять)
+### 4. ✅ Legacy-поля в схеме БД — колонки дропнуты (2026-07-11)
 **Код** ✅ — больше не селектит и не пишет legacy-поля. После правки `ensureCard*()` в [js/supabase-api.js](js/supabase-api.js) ни одной ссылки на `total_*` (cards) и `days/hours/minutes` (time_entries) в SELECT/INSERT/PATCH не осталось. Чтение `cardData.days/hours/minutes` из удалённого `storage-stats.html` тоже ушло вместе с файлом (см. п.2).
 
-**БД** — осталось дропнуть колонки. Все объявлены как `INTEGER DEFAULT 0` без `NOT NULL`, никем не читаются и не пишутся, безопасны к удалению:
-- `cards.total_days`, `cards.total_hours`, `cards.total_minutes`
-- `time_entries.days`, `time_entries.hours`, `time_entries.minutes`
+**БД** ✅ — колонки удалены в Supabase после того, как минутный код был выкачен в прод (PR #34):
+- `cards.total_days`, `cards.total_hours`, `cards.total_minutes` — удалены
+- `time_entries.days`, `time_entries.hours`, `time_entries.minutes` — удалены
 
-⚠️ **Порядок миграции:** сначала выкатить текущую версию кода (без SELECT-ов на legacy-поля) в прод и убедиться, что всё работает, и **только потом** дропать колонки. Иначе старая прод-версия, ещё селектящая `total_*`, начнёт получать ошибки от PostgREST.
-
-Миграция (в Supabase SQL Editor, **после прод-деплоя**):
-```sql
-ALTER TABLE cards
-  DROP COLUMN total_days,
-  DROP COLUMN total_hours,
-  DROP COLUMN total_minutes;
-
-ALTER TABLE time_entries
-  DROP COLUMN days,
-  DROP COLUMN hours,
-  DROP COLUMN minutes;
-```
-
-После выполнения — обновить `README.md:131-160` (секция CREATE TABLE), убрав описание legacy-полей.
+**Документация** ✅ — секция `CREATE TABLE` в `README.md` и оговорки про legacy-поля в `CLAUDE.md` обновлены под новую схему.
 
 ### 5. ✅ `views/clear-cache.html` — удалён
 Был орфаном (не подключён в `manifest.json` / `client.js` / `t.popup`), дублировал кнопки `settings.html`, вызывал несуществующую `TnMStorage.resetAllData()`.
