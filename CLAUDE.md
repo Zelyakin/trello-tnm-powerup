@@ -8,12 +8,13 @@ This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses S
 
 > **See `TODO.md`** for the list of pending fixes (broken legacy views, dead methods, settings screen redesign).
 
-**Key Features (v3.0)**:
+**Key Features (v3.3)**:
 - Minute-based storage system for flexible time display
 - Configurable hours per day: 8h workday OR 24h calendar day (per-board setting)
 - Auto-refresh when settings change (selective cache invalidation)
 - Optimized batch queries for board statistics
 - Advanced caching with race condition protection (v3.1)
+- Archived/deleted card names in CSV export via Trello REST — opt-in, read-only (v3.3)
 
 ## Architecture
 
@@ -26,9 +27,6 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
    - `cards` table stores **pre-aggregated totals** in `time_minutes` field
    - Individual time entries stored in `time_entries` with `time_minutes` field
    - `board_settings` stores per-board `hours_per_day` configuration (8 or 24)
-   - Legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and
-     `days`/`hours`/`minutes` columns in `time_entries` still exist in the schema (DEFAULT 0)
-     but are no longer selected, written, or read by the code. Safe to drop — see `TODO.md`.
 
 2. **In-Memory Cache** (`supabase-api.js`) - **v3.1 Multi-Level Caching**
    - **Card Data Cache**: TTL-based (60s) for individual card time data
@@ -59,7 +57,7 @@ views/
 ├── card-detail.html    - Time entry form (popup when clicking T&M button)
 ├── card-back.html      - Summary displayed on card back
 ├── board-stats.html    - Board statistics with period filtering
-├── export-time.html    - CSV export interface
+├── export-time.html    - CSV export interface (+ Trello REST resolution of archived/deleted card names)
 └── settings.html       - Display settings (8h/24h) + cache management buttons
 ```
 
@@ -307,6 +305,36 @@ const timeEntries = await GET
 
 The same embedded-JOIN pattern is used in `getAllDataForExport()` (with a parallel `/cards` fetch — export needs to list empty cards for the "Include empty" toggle).
 
+### 9. Off-board Card Name Resolution in Export (Trello REST)
+
+The CSV export ([views/export-time.html](views/export-time.html)) needs a human-readable name
+per card, but Supabase only stores `trello_card_id` — names come live from Trello. The client
+method `t.cards('all')` returns **only open cards on the board**; archived and deleted cards
+are absent, so historically they exported as `Card <id>`.
+
+Fix (this is the **only** place the Power-Up touches the Trello REST API):
+
+- `export-time.html` initializes the iframe with `{ appKey: TRELLO_API_KEY, appName }` — both are
+  mandatory or `t.getRestApi()` throws. There are **two Power-Ups** (prod on `pages.dev` from `master`,
+  dev on `github.io` from `dev`), each with its own public API key; `TRELLO_API_KEY` is chosen at
+  runtime by `location.hostname`, so the file is identical on both branches — a `dev → master` PR
+  can't clobber the prod key. Keys are public-safe on the client; see README → Configuration → Trello REST API.
+- Export flow: fetch entries from Supabase → get `t.cards('all')` → any exported card **not** in
+  that set is "off-board." REST is touched **only** when the user ticks the opt-in "Resolve names of
+  archived/deleted cards" checkbox AND off-board cards exist (default off → no REST at all, off-board
+  rows export as `Card <id>`). Rationale: Trello's `read` token is account-wide, so name resolution
+  is off by default and never surprises a user with an account-access consent screen.
+- Auth is **opt-in, lazy and read-only**: `restApi.isAuthorized()`; if false, an in-popup prompt asks
+  the user to `authorize({ scope: 'read', expiration: '30days' })`. `authorize()` **must** be called
+  from a direct click handler (`onAuthAllow`) — calling it after `await`s trips the browser popup
+  blocker. The `read` scope is account-wide (no per-board option); token stored by Trello's client
+  lib (member-private), never by us. When the prompt shows, the filter form is hidden so it is not
+  pushed below the fold.
+- Per off-board id: `GET /1/cards/{id}?fields=name,closed&key&token` →
+  `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
+  board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`
+  fallback (export never breaks). Status is encoded as a name prefix — no separate CSV column.
+
 ## Deployment
 
 The Power-Up is hosted on **Cloudflare Pages** at `https://trello-tnm-powerup.pages.dev/`
@@ -416,7 +444,7 @@ If modifying database schema:
 2. Added `board_settings` table with `hours_per_day` constraint (8 or 24)
 3. Changed `trello_board_id` type from TEXT to UUID in `boards` table
 4. Migrated all existing data: `time_minutes = (days × 8 × 60) + (hours × 60) + minutes`
-5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and `days`/`hours`/`minutes` columns in `time_entries` for backward compatibility (no longer touched by code — pending DB cleanup, see `TODO.md`)
+5. Kept legacy `total_days`/`total_hours`/`total_minutes` columns in `cards` and `days`/`hours`/`minutes` columns in `time_entries` for backward compatibility during the transition. **Dropped 2026-07-11** once the minute-based code was live in prod (see "Future cleanup" below)
 
 **Code changes**:
 - All storage/display now uses `time_minutes` + `hours_per_day` parameter
@@ -424,10 +452,10 @@ If modifying database schema:
 - Optimized `getBoardStats()` to use batch `in.(cardIds)` query
 - Added `formatTime()` and `parseTimeToMinutes()` utilities in `storage.js`
 
-**Future cleanup** (see `TODO.md`):
+**Future cleanup** (completed):
 - ✅ Stopped selecting legacy `total_*` columns in `ensureCard*()` queries
-- Drop legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table
-- Drop legacy `days`/`hours`/`minutes` columns from `time_entries` table
+- ✅ Dropped legacy `total_days`/`total_hours`/`total_minutes` columns from `cards` table (2026-07-11)
+- ✅ Dropped legacy `days`/`hours`/`minutes` columns from `time_entries` table (2026-07-11)
 
 ### Version 3.1 (January 2026) - Advanced Caching & Race Condition Protection
 

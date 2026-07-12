@@ -49,6 +49,22 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 6. File format: "date","task","user","time spent","time spent (minutes)","work description"
 7. The "time spent (minutes)" column contains total time converted to minutes for easy processing in Excel
 
+**Archived & deleted cards.** Time logged on a card stays in the export even after the card
+is archived or deleted from the board. Trello's Power-Up client (`t.cards('all')`) does not
+return such cards, so their names are resolved on demand via the Trello REST API:
+
+- **Archived** card → shown as `[archived] <name>`
+- **Deleted** card → shown as `[deleted] <cardId>` (Trello no longer has a name for it)
+- A card **moved to another board** still resolves to its plain `<name>` (no prefix)
+
+Name resolution is **opt-in**: tick "Resolve names of archived/deleted cards" in the export form.
+When it is off (the default), the export never contacts Trello's REST API and off-board cards
+export as `Card <id>`. When it is on and the export contains off-board cards, the person exporting
+is asked once to grant **read-only** access to Trello — Trello grants this at the account level
+(there is no per-board scope), and the token expires after 30 days. If they decline, the export
+still completes with the `Card <id>` fallback. Trello's client library stores the token itself —
+it is never sent to or stored by this Power-Up. See **Setup → Trello REST API** below for the API key.
+
 ### Board Statistics
 
 1. Click the "T&M Stats" button (Σ icon) on the board toolbar
@@ -64,11 +80,9 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 
 - **Hours per day setting**: Go to Settings → Choose between "8 hours (work day)" or "24 hours (calendar day)"
   - This affects how days are calculated: 16 hours = 2 days (8h mode) or 0d 16h (24h mode)
-  - Changes apply instantly to all time displays on the board
-- **Clear cache**: Click the "Settings" button on the board toolbar → "Clear Cache and Reload"
-- **Clear API cache**: Settings → "Clear API Cache" (clears Supabase cache without reloading)
-- **View storage statistics**: Go to Settings → "View Storage Statistics"
-- **Complete data reset**: Go to Settings → "Delete All Data" (⚠️ irreversible!)
+  - Click "Save Settings" — changes apply instantly to all time displays on the board
+- **Data removal**: The Settings screen has a "Data Removal" section. There is no in-app delete
+  button by design — to permanently erase all your data, contact zelyakin@gmail.com
 
 ## Development
 
@@ -93,8 +107,7 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 │   ├── card-back.html         # Card back summary display
 │   ├── settings.html          # Power-Up settings and management
 │   ├── export-time.html       # CSV data export interface
-│   ├── board-stats.html       # Board statistics
-│   └── storage-stats.html     # Storage usage statistics (legacy)
+│   └── board-stats.html       # Board statistics
 │
 └── img/
     ├── icon.png               # Power-Up icon
@@ -133,10 +146,6 @@ CREATE TABLE cards (
   trello_card_id TEXT UNIQUE NOT NULL,
   board_id UUID REFERENCES boards(id),
   time_minutes INTEGER DEFAULT 0,
-  -- Legacy fields (deprecated, keep for backward compatibility)
-  total_days INTEGER DEFAULT 0,
-  total_hours INTEGER DEFAULT 0,
-  total_minutes INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -148,10 +157,6 @@ CREATE TABLE time_entries (
   trello_member_id TEXT,
   member_name TEXT,
   time_minutes INTEGER DEFAULT 0,
-  -- Legacy fields (deprecated, keep for backward compatibility)
-  days INTEGER DEFAULT 0,
-  hours INTEGER DEFAULT 0,
-  minutes INTEGER DEFAULT 0,
   description TEXT,
   work_date DATE,
   trello_entry_id BIGINT,
@@ -266,6 +271,40 @@ SUPABASE_URL: 'your-project-url',
 SUPABASE_ANON_KEY: 'your-anon-key'
 ```
 
+### Trello REST API
+
+Required only for resolving names of **archived/deleted** cards in the CSV export
+(everything else works without it).
+
+This project runs as **two Power-Ups**: production on `https://trello-tnm-powerup.pages.dev`
+(Cloudflare Pages, `master`) and development on `https://zelyakin.github.io/trello-tnm-powerup/`
+(GitHub Pages, `dev`). Each has its own API key; `views/export-time.html` selects the right one at
+runtime by `location.hostname`, so the source file is identical on both branches (a `dev → master`
+PR can't clobber the production key):
+
+```javascript
+const DEV_KEY = 'DEV_POWERUP_KEY';
+const TRELLO_API_KEY = ({
+  'trello-tnm-powerup.pages.dev': 'PROD_POWERUP_KEY',
+  'zelyakin.github.io':           DEV_KEY
+})[location.hostname] || DEV_KEY;  // unknown host → dev key
+```
+
+Setup per Power-Up (https://trello.com/power-ups/admin → the Power-Up → **API Key** tab):
+
+1. Generate (or reuse) the API key and paste it into the map above for the matching host.
+2. In that key's **Allowed origins**, add the Power-Up's **origin only** (scheme + host, no path):
+   - production key → `https://trello-tnm-powerup.pages.dev`
+   - development key → `https://zelyakin.github.io`
+
+   It is the origin `https://zelyakin.github.io`, **not** the full Pages path `.../trello-tnm-powerup/`.
+   Without a matching allowed origin, Trello blocks the authorization popup.
+
+API keys are **public and safe to embed** in client-side code (per Trello's docs); only the user
+token is secret, and Trello's client library stores that itself (member-private, one-time `read`
+scope) — this Power-Up never sees or persists it. Until real keys are set, the export still works;
+off-board cards just fall back to `Card <id>` instead of resolved `[archived]`/`[deleted]` names.
+
 ### Environment Variables
 
 The Power-Up is configured for production use with Supabase cloud storage.
@@ -333,7 +372,7 @@ The `board_id` is only needed when creating a new card record.
 
 **Badges not updating after adding time**:
 - The Power-Up updates badges automatically
-- If badges don't update, try clearing cache: Settings → "Clear Cache and Reload"
+- If badges don't update, reload the Trello tab (in-memory cache has a 60s TTL and is rebuilt on reload)
 - Check browser console for API errors
 
 **Slow board loading**:
@@ -344,15 +383,23 @@ The `board_id` is only needed when creating a new card record.
 **Data not syncing**:
 - Verify Supabase connection in browser console
 - Check network connectivity
-- Clear API cache: Settings → "Clear API Cache"
+- Reload the Trello tab to refresh cached data (cache TTL is 60 seconds)
 
 **Storage limit warnings** (legacy Trello Storage):
 - No longer applicable - all data stored in Supabase
-- Old storage statistics view kept for reference
 
 ## Changelog
 
-### Version 3.0 (Current - Minute-Based Storage)
+### Version 3.3 (Current) - Readable Export
+
+**New features:**
+- ✅ **Archived/deleted card names in CSV export**: off-board cards now resolve to `[archived] <name>` / `[deleted] <id>` via the Trello REST API instead of a bare `Card <id>`
+- ✅ **Opt-in and read-only**: name resolution is off by default; enabling it asks the exporter once for read-only Trello access (30-day token, revocable anytime)
+
+**Improvements:**
+- CSV output hardened against formula injection; Export button disabled while a run is in progress; tidier export dialog
+
+### Version 3.0 - Minute-Based Storage
 
 **Major features:**
 - ✅ **Minute-based storage system**: All time stored as minutes internally
@@ -367,7 +414,7 @@ The `board_id` is only needed when creating a new card record.
 - Added `board_settings` table with `hours_per_day` constraint
 - Changed `trello_board_id` type from TEXT to UUID
 - Migrated all existing data from d/h/m to minutes (8h conversion)
-- Kept legacy fields for backward compatibility
+- Kept legacy d/h/m fields for backward compatibility during the transition — dropped 2026-07-11 once the minute-based code was live in prod
 
 **Performance improvements:**
 - Board stats: 2-3 requests (was N+2 for N cards)

@@ -20,29 +20,14 @@
 ### 3. ✅ `SupabaseAPI.ensureCard()` — удалён
 Метод-заглушка, который безусловно бросал `Error('Card not found and cannot be created without board context')`. Был архитектурным заделом эпохи перехода на `trello_card_id` как глобально уникальный ключ (коммит `7fb49c9`), но не выстрелил — все места чтения работают через прямые `GET /cards?...`, а мутации используют `ensureCardWithBoard()`. Удалён из [js/supabase-api.js](js/supabase-api.js).
 
-### 4. Legacy-поля в схеме БД (колонки можно удалять)
+### 4. ✅ Legacy-поля в схеме БД — колонки дропнуты (2026-07-11)
 **Код** ✅ — больше не селектит и не пишет legacy-поля. После правки `ensureCard*()` в [js/supabase-api.js](js/supabase-api.js) ни одной ссылки на `total_*` (cards) и `days/hours/minutes` (time_entries) в SELECT/INSERT/PATCH не осталось. Чтение `cardData.days/hours/minutes` из удалённого `storage-stats.html` тоже ушло вместе с файлом (см. п.2).
 
-**БД** — осталось дропнуть колонки. Все объявлены как `INTEGER DEFAULT 0` без `NOT NULL`, никем не читаются и не пишутся, безопасны к удалению:
-- `cards.total_days`, `cards.total_hours`, `cards.total_minutes`
-- `time_entries.days`, `time_entries.hours`, `time_entries.minutes`
+**БД** ✅ — колонки удалены в Supabase после того, как минутный код был выкачен в прод (PR #34):
+- `cards.total_days`, `cards.total_hours`, `cards.total_minutes` — удалены
+- `time_entries.days`, `time_entries.hours`, `time_entries.minutes` — удалены
 
-⚠️ **Порядок миграции:** сначала выкатить текущую версию кода (без SELECT-ов на legacy-поля) в прод и убедиться, что всё работает, и **только потом** дропать колонки. Иначе старая прод-версия, ещё селектящая `total_*`, начнёт получать ошибки от PostgREST.
-
-Миграция (в Supabase SQL Editor, **после прод-деплоя**):
-```sql
-ALTER TABLE cards
-  DROP COLUMN total_days,
-  DROP COLUMN total_hours,
-  DROP COLUMN total_minutes;
-
-ALTER TABLE time_entries
-  DROP COLUMN days,
-  DROP COLUMN hours,
-  DROP COLUMN minutes;
-```
-
-После выполнения — обновить `README.md:131-160` (секция CREATE TABLE), убрав описание legacy-полей.
+**Документация** ✅ — секция `CREATE TABLE` в `README.md` и оговорки про legacy-поля в `CLAUDE.md` обновлены под новую схему.
 
 ### 5. ✅ `views/clear-cache.html` — удалён
 Был орфаном (не подключён в `manifest.json` / `client.js` / `t.popup`), дублировал кнопки `settings.html`, вызывал несуществующую `TnMStorage.resetAllData()`.
@@ -115,6 +100,30 @@ allCards.forEach(c => this._cardDataCache.set(`badge_${c.trello_card_id}`, {
 Снизу добавлен нейтральный инфо-блок "Data Removal" с предложением написать на `zelyakin@gmail.com` для полного удаления данных. Высота popup в [js/client.js:144](js/client.js:144) поднята с 300 до 360 — старая высота уже не вмещала контент полностью (попап скроллился), новая компоновка влезает без скролла.
 
 Финальный экран: Display Settings (select 8h/24h + Save) → separator → Data Removal (контактный текст).
+
+---
+
+## 📤 Экспорт
+
+### 10. ✅ Имена архивных/удалённых карточек в CSV (Trello REST)
+
+Было: имя карточки бралось только из `t.cards('all')`, который возвращает **лишь открытые** карточки доски. Архивные и удалённые выгружались как `Card <id>` и были неотличимы друг от друга.
+
+Стало ([views/export-time.html](views/export-time.html)): для карточек, которых нет в `t.cards('all')`, имя достаётся через **Trello REST** (`GET /1/cards/{id}?fields=name,closed`):
+- `200 + closed:true` → `[archived] <name>`
+- `200 + closed:false` → `<name>` (карточка открыта — напр. перенесена на другую доску)
+- `404` → `[deleted] <id>`
+- ошибка/отказ от авторизации/нет ключа → фолбэк `Card <id>` (экспорт не ломается)
+
+Авторизация **opt-in, ленивая и read-only**: резолв включается галкой «Resolve names of archived/deleted cards» в форме экспорта (по умолчанию **выкл**). Без галки экспорт вообще не трогает REST/авторизацию, off-board → `Card <id>`. С галкой и при наличии off-board карточек → `authorize({scope:'read', expiration:'30days'})` вызывается прямым кликом (иначе браузер блокирует попап). Токен хранит клиентская библиотека Trello (member-private), у нас не оседает. Статус кодируется префиксом к имени — отдельной колонки нет (по решению).
+
+⚠️ **UX-нюанс (решён):** `read`-скоуп у Trello даёт токен на чтение **всего аккаунта** (пер-бордового скоупа в этом флоу нет), consent-экран пишет «доступ к аккаунту» — на месте пользователя это отпугивает. Решение: резолв сделан **opt-in** (дефолтный экспорт авторизацию не триггерит вообще); текст промпта заранее предупреждает про account-level; токен на 30 дней с отзывом в любой момент. Промпт при показе прячет форму фильтра (не уезжает под фолд), debug-панель убрана из UI в консоль.
+
+⚠️ **Требуется разовая настройка:** вставить публичный API-ключ Power-Up'а в `TRELLO_API_KEY` ([views/export-time.html](views/export-time.html)) и добавить origin в Allowed origins ключа. См. README → Configuration → Trello REST API. До установки ключа фича неактивна, экспорт работает по-старому.
+
+### 11. Флажки типов карточек в экспорте (на будущее)
+
+Идея: чекбоксы «выгружать / не выгружать» для категорий — открытые / архивные / удалённые (off-board). Сейчас есть только «Include cards without time tracking data». После п.10 классификация уже вычисляется (on-board vs `[archived]`/`[deleted]`), так что тумблеры лягут поверх готовой логики фильтрации.
 
 ---
 
