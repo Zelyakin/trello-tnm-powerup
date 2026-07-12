@@ -57,11 +57,13 @@ return such cards, so their names are resolved on demand via the Trello REST API
 - **Deleted** card → shown as `[deleted] <cardId>` (Trello no longer has a name for it)
 - A card **moved to another board** still resolves to its plain `<name>` (no prefix)
 
-The REST lookup only runs when the export actually contains off-board cards, and only the
-person exporting is asked to grant **one-time, read-only** access to Trello (via a prompt in
-the export popup). If they decline, the export still completes with a plain `Card <id>`
-fallback for those rows. Trello's client library stores the token itself — it is never sent
-to or stored by this Power-Up. See **Setup → Trello REST API** below for the required API key.
+Name resolution is **opt-in**: tick "Resolve names of archived/deleted cards" in the export form.
+When it is off (the default), the export never contacts Trello's REST API and off-board cards
+export as `Card <id>`. When it is on and the export contains off-board cards, the person exporting
+is asked once to grant **read-only** access to Trello — Trello grants this at the account level
+(there is no per-board scope), and the token expires after 30 days. If they decline, the export
+still completes with the `Card <id>` fallback. Trello's client library stores the token itself —
+it is never sent to or stored by this Power-Up. See **Setup → Trello REST API** below for the API key.
 
 ### Board Statistics
 

@@ -319,12 +319,16 @@ Fix (this is the **only** place the Power-Up touches the Trello REST API):
   runtime by `location.hostname`, so the file is identical on both branches — a `dev → master` PR
   can't clobber the prod key. Keys are public-safe on the client; see README → Configuration → Trello REST API.
 - Export flow: fetch entries from Supabase → get `t.cards('all')` → any exported card **not** in
-  that set is "off-board." **REST is only touched when off-board cards exist**, and authorization is
-  only checked/requested then (never on a clean board).
-- Auth is **lazy and read-only**: `restApi.isAuthorized()`; if false, an in-popup prompt asks the
-  user to `authorize({ scope: 'read', expiration: 'never' })`. `authorize()` **must** be called from
-  a direct click handler (`onAuthAllow`) — calling it after `await`s trips the browser popup blocker.
-  The token is stored by Trello's client lib (member-private), never by us.
+  that set is "off-board." REST is touched **only** when the user ticks the opt-in "Resolve names of
+  archived/deleted cards" checkbox AND off-board cards exist (default off → no REST at all, off-board
+  rows export as `Card <id>`). Rationale: Trello's `read` token is account-wide, so name resolution
+  is off by default and never surprises a user with an account-access consent screen.
+- Auth is **opt-in, lazy and read-only**: `restApi.isAuthorized()`; if false, an in-popup prompt asks
+  the user to `authorize({ scope: 'read', expiration: '30days' })`. `authorize()` **must** be called
+  from a direct click handler (`onAuthAllow`) — calling it after `await`s trips the browser popup
+  blocker. The `read` scope is account-wide (no per-board option); token stored by Trello's client
+  lib (member-private), never by us. When the prompt shows, the filter form is hidden so it is not
+  pushed below the fold.
 - Per off-board id: `GET /1/cards/{id}?fields=name,closed&key&token` →
   `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
   board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`

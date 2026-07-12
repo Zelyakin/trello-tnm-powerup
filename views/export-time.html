@@ -139,17 +139,26 @@
                 Include cards without time tracking data
             </label>
         </div>
+
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="resolve-names">
+                Resolve names of archived/deleted cards (needs Trello read access)
+            </label>
+        </div>
     </div>
 
-    <div class="button-container">
+    <div class="button-container" id="export-controls">
         <button id="export-btn" class="mod-primary">Export to CSV</button>
     </div>
 
     <p class="note">Note: All time tracking data from the board will be exported.</p>
 
     <div class="auth-prompt" id="auth-prompt">
-        <p>Found cards that are no longer on the board (archived or deleted). To resolve
-           their real names and statuses, one-time read access to Trello is required.</p>
+        <p>Showing real names for archived/deleted cards needs <strong>read-only</strong> Trello
+           access. Trello grants this at the account level (there is no per-board scope) and will
+           phrase it as "account access" — it stays read-only, expires in 30 days, and you can
+           revoke it anytime in your Trello settings. You can also export now with placeholder names.</p>
         <div class="button-container">
             <button id="auth-allow-btn" class="mod-primary">Allow &amp; continue</button>
             <button id="auth-skip-btn">Export without names</button>
@@ -219,11 +228,8 @@
         return date.toLocaleDateString();
     }
 
-    // Function to add debug info
+    // Диагностика — только в консоль, без DOM-панели (это был дев-шум для пользователя).
     function addDebugInfo(message) {
-        const debugDiv = document.getElementById('debug-info');
-        debugDiv.style.display = 'block';
-        debugDiv.innerHTML += message + '<br>';
         console.log('Debug:', message);
     }
 
@@ -231,6 +237,14 @@
     // которые бы перезатёрли глобальный pendingExport.
     function setExporting(inProgress) {
         document.getElementById('export-btn').disabled = inProgress;
+    }
+
+    // Показать/спрятать форму фильтра (чтобы auth-промпт был главным контентом без скролла).
+    function setFormVisible(visible) {
+        const display = visible ? '' : 'none';
+        document.querySelector('.filter-container').style.display = display;
+        document.getElementById('export-controls').style.display = display;
+        document.querySelector('.note').style.display = display;
     }
 
     // Защита от CSV-инъекции: значение, начинающееся с = + - @ tab или CR, Excel/Sheets
@@ -243,10 +257,14 @@
         return s.replace(/"/g, '""');
     }
 
-    // Показать/скрыть промпт авторизации
+    // Показать/скрыть промпт авторизации. При показе прячем форму фильтра и прогресс,
+    // чтобы промпт был единственным контентом наверху (иначе он уезжал под фолд).
     function showAuthPrompt() {
         document.getElementById('progress-container').style.display = 'none';
-        document.getElementById('auth-prompt').style.display = 'block';
+        setFormVisible(false);
+        const prompt = document.getElementById('auth-prompt');
+        prompt.style.display = 'block';
+        prompt.scrollIntoView({ block: 'start' });
     }
     function hideAuthPrompt() {
         document.getElementById('auth-prompt').style.display = 'none';
@@ -264,8 +282,10 @@
             const startDateValue = document.getElementById('start-date').value;
             const endDateValue = document.getElementById('end-date').value;
             const includeEmpty = document.getElementById('include-empty').checked;
+            // Opt-in: резолв имён off-board карточек через REST только по явной галке.
+            const resolveNames = document.getElementById('resolve-names').checked;
 
-            addDebugInfo(`Start date: ${startDateValue}, End date: ${endDateValue}, Include empty: ${includeEmpty}`);
+            addDebugInfo(`Start date: ${startDateValue}, End date: ${endDateValue}, Include empty: ${includeEmpty}, Resolve names: ${resolveNames}`);
 
             const startDate = new Date(startDateValue);
             const endDate = new Date(endDateValue);
@@ -309,8 +329,9 @@
             pendingExport = { exportData, hoursPerDay, allCards, includeEmpty, offBoardIds };
             addDebugInfo(`Off-board cards needing REST: ${offBoardIds.length}`);
 
-            if (offBoardIds.length === 0) {
-                // Всё на доске — REST не нужен, авторизация НЕ запрашивается.
+            if (offBoardIds.length === 0 || !resolveNames) {
+                // REST не нужен: либо всё на доске, либо пользователь не включил резолв имён.
+                // Авторизация НЕ запрашивается; off-board карточки уйдут как Card <id>.
                 await finishExport({});
                 return;
             }
@@ -350,7 +371,7 @@
 
         const restApi = t.getRestApi();
         try {
-            await restApi.authorize({ scope: 'read', expiration: 'never' });
+            await restApi.authorize({ scope: 'read', expiration: '30days' });
         } catch (e) {
             addDebugInfo(`Authorization cancelled/failed: ${e && e.message}`);
             // Не авторизовались — выгружаем без имён off-board карточек (legacy-фолбэк).
@@ -473,6 +494,7 @@
 
         progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from Supabase`;
         setExporting(false);
+        setFormVisible(true);
 
         // Hide progress after a short delay
         setTimeout(() => {
@@ -490,6 +512,7 @@
         // Hide progress
         document.getElementById('progress-container').style.display = 'none';
         setExporting(false);
+        setFormVisible(true);
     }
 
     // Initialize on page load

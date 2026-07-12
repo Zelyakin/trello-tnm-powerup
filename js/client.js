@@ -116,7 +116,7 @@ TrelloPowerUp.initialize({
                     return t.popup({
                         title: 'Export Time Data',
                         url: './views/export-time.html',
-                        height: 400
+                        height: 460
                     });
                 }
             },
