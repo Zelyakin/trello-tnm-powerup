@@ -56,7 +56,7 @@ views/
 ├── card-detail.html    - Time entry form (popup when clicking T&M button)
 ├── card-back.html      - Summary displayed on card back
 ├── board-stats.html    - Board statistics with period filtering
-├── export-time.html    - CSV export interface
+├── export-time.html    - CSV export interface (+ Trello REST resolution of archived/deleted card names)
 └── settings.html       - Display settings (8h/24h) + cache management buttons
 ```
 
@@ -303,6 +303,32 @@ const timeEntries = await GET
 - Empty board / empty period → `entries=[]` → naturally zeroed-out result, no special early-return needed
 
 The same embedded-JOIN pattern is used in `getAllDataForExport()` (with a parallel `/cards` fetch — export needs to list empty cards for the "Include empty" toggle).
+
+### 9. Off-board Card Name Resolution in Export (Trello REST)
+
+The CSV export ([views/export-time.html](views/export-time.html)) needs a human-readable name
+per card, but Supabase only stores `trello_card_id` — names come live from Trello. The client
+method `t.cards('all')` returns **only open cards on the board**; archived and deleted cards
+are absent, so historically they exported as `Card <id>`.
+
+Fix (this is the **only** place the Power-Up touches the Trello REST API):
+
+- `export-time.html` initializes the iframe with `{ appKey: TRELLO_API_KEY, appName }` — both are
+  mandatory or `t.getRestApi()` throws. There are **two Power-Ups** (prod on `pages.dev` from `master`,
+  dev on `github.io` from `dev`), each with its own public API key; `TRELLO_API_KEY` is chosen at
+  runtime by `location.hostname`, so the file is identical on both branches — a `dev → master` PR
+  can't clobber the prod key. Keys are public-safe on the client; see README → Configuration → Trello REST API.
+- Export flow: fetch entries from Supabase → get `t.cards('all')` → any exported card **not** in
+  that set is "off-board." **REST is only touched when off-board cards exist**, and authorization is
+  only checked/requested then (never on a clean board).
+- Auth is **lazy and read-only**: `restApi.isAuthorized()`; if false, an in-popup prompt asks the
+  user to `authorize({ scope: 'read', expiration: 'never' })`. `authorize()` **must** be called from
+  a direct click handler (`onAuthAllow`) — calling it after `await`s trips the browser popup blocker.
+  The token is stored by Trello's client lib (member-private), never by us.
+- Per off-board id: `GET /1/cards/{id}?fields=name,closed&key&token` →
+  `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
+  board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`
+  fallback (export never breaks). Status is encoded as a name prefix — no separate CSV column.
 
 ## Deployment
 

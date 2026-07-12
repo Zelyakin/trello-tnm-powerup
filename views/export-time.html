@@ -95,6 +95,24 @@
             border-radius: 3px;
             display: none;
         }
+
+        .auth-prompt {
+            display: none;
+            text-align: left;
+            margin-top: 16px;
+            padding: 12px;
+            background-color: var(--tnm-bg-secondary);
+            border-radius: 4px;
+        }
+
+        .auth-prompt p {
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        #auth-skip-btn {
+            margin-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -129,6 +147,15 @@
 
     <p class="note">Note: All time tracking data from the board will be exported.</p>
 
+    <div class="auth-prompt" id="auth-prompt">
+        <p>Found cards that are no longer on the board (archived or deleted). To resolve
+           their real names and statuses, one-time read access to Trello is required.</p>
+        <div class="button-container">
+            <button id="auth-allow-btn" class="mod-primary">Allow &amp; continue</button>
+            <button id="auth-skip-btn">Export without names</button>
+        </div>
+    </div>
+
     <div class="progress-container" id="progress-container">
         <div class="progress-bar">
             <div class="progress-bar-fill" id="progress-bar-fill"></div>
@@ -144,7 +171,25 @@
 <script src="../js/supabase-api.js"></script>
 <script src="../js/storage.js"></script>
 <script>
-    const t = TrelloPowerUp.iframe();
+    // Публичные API-ключи Power-Up'ов для Trello REST (безопасны на клиенте — см. доку Trello).
+    // Два деплоя = два Power-Up'а = два ключа; выбираем по origin. Файл идентичен на dev/master,
+    // поэтому PR dev→master ничего не перезатирает (нет merge-хазарда с одним хардкодом на ветку).
+    // В Allowed origins каждого ключа — только его origin: prod → https://trello-tnm-powerup.pages.dev,
+    // dev → https://zelyakin.github.io. Неизвестный хост → dev-ключ (dev-приложение покрывает всё).
+    const DEV_KEY = '8bb554ce8c943926a9ff2213b983ec99';
+    const TRELLO_API_KEY = ({
+        'trello-tnm-powerup.pages.dev': '0e9409a84f468ed23034089a360d910d',
+        'zelyakin.github.io':           DEV_KEY
+    })[location.hostname] || DEV_KEY;
+
+    // appKey + appName обязательны, иначе t.getRestApi() бросит исключение.
+    const t = TrelloPowerUp.iframe({
+        appKey: TRELLO_API_KEY,
+        appName: 'T&M Time Tracking'
+    });
+
+    // Контекст незавершённого экспорта — чтобы продолжить его после клика "Allow".
+    let pendingExport = null;
 
     // Function to initialize date fields
     function initDateFields() {
@@ -174,26 +219,6 @@
         return date.toLocaleDateString();
     }
 
-    // Function to check if date is in selected range
-    function isDateInRange(dateString, startDate, endDate) {
-        if (!dateString) return false;
-
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return false;
-
-        // Reset time to 00:00:00 for correct date comparison
-        date.setHours(0, 0, 0, 0);
-
-        return date >= startDate && date <= endDate;
-    }
-
-    // DEPRECATED: Function kept for backwards compatibility
-    // Time is now stored in minutes in the database
-    function convertToMinutes(days, hours, minutes) {
-        // 1 day = 8 hours = 480 minutes
-        return (days * 8 * 60) + (hours * 60) + minutes;
-    }
-
     // Function to add debug info
     function addDebugInfo(message) {
         const debugDiv = document.getElementById('debug-info');
@@ -202,54 +227,67 @@
         console.log('Debug:', message);
     }
 
-    // Export data to CSV
-    async function exportToCSV() {
+    // Блокировка кнопки Export на время выполнения — защита от параллельных запусков,
+    // которые бы перезатёрли глобальный pendingExport.
+    function setExporting(inProgress) {
+        document.getElementById('export-btn').disabled = inProgress;
+    }
+
+    // Защита от CSV-инъекции: значение, начинающееся с = + - @ tab или CR, Excel/Sheets
+    // могут исполнить как формулу — префиксуем апострофом. Плюс экранируем кавычки.
+    function csvCell(value) {
+        let s = String(value === null || value === undefined ? '' : value);
+        if (/^[=+\-@\t\r]/.test(s)) {
+            s = "'" + s;
+        }
+        return s.replace(/"/g, '""');
+    }
+
+    // Показать/скрыть промпт авторизации
+    function showAuthPrompt() {
+        document.getElementById('progress-container').style.display = 'none';
+        document.getElementById('auth-prompt').style.display = 'block';
+    }
+    function hideAuthPrompt() {
+        document.getElementById('auth-prompt').style.display = 'none';
+    }
+
+    // Точка входа: собрать данные, найти off-board карточки, при необходимости — авторизация.
+    async function startExport() {
+        document.getElementById('error-message').style.display = 'none';
+        hideAuthPrompt();
+        setExporting(true);
         try {
-            // Clear previous debug info
             document.getElementById('debug-info').innerHTML = '';
             document.getElementById('debug-info').style.display = 'none';
 
-            // Get filter parameters
             const startDateValue = document.getElementById('start-date').value;
             const endDateValue = document.getElementById('end-date').value;
             const includeEmpty = document.getElementById('include-empty').checked;
 
             addDebugInfo(`Start date: ${startDateValue}, End date: ${endDateValue}, Include empty: ${includeEmpty}`);
 
-            // Convert date strings to Date objects
             const startDate = new Date(startDateValue);
             const endDate = new Date(endDateValue);
-
-            // Set time for correct comparison
             startDate.setHours(0, 0, 0, 0);
             endDate.setHours(23, 59, 59, 999);
 
-            // Check date validity
             if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 showError('Please specify a valid date range');
                 return;
             }
-
             if (startDate > endDate) {
                 showError('Start date cannot be later than end date');
                 return;
             }
 
-            // Show progress
             const progressContainer = document.getElementById('progress-container');
-            const progressBarFill = document.getElementById('progress-bar-fill');
             const progressStatus = document.getElementById('progress-status');
-
             progressContainer.style.display = 'block';
+            document.getElementById('progress-bar-fill').style.width = '0%';
             progressStatus.textContent = 'Getting data from Supabase...';
 
-            // Initialize CSV content
-            let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
-            let exportedRowsCount = 0;
-
             addDebugInfo('Fetching data from Supabase...');
-
-            // Get data from Supabase (now includes hoursPerDay setting)
             const result = await TnMStorage.getAllCardDataForExport(t, startDateValue, endDateValue);
             const exportData = result.data;
             const hoursPerDay = result.hoursPerDay || 8;
@@ -257,81 +295,190 @@
             addDebugInfo(`Found ${exportData.length} cards with data in Supabase`);
             addDebugInfo(`Board setting: ${hoursPerDay} hours per day`);
 
-            // Get information about all cards on the board for names
+            // t.cards('all') НЕ возвращает архивные/удалённые карточки — только открытые на доске.
             const allCards = await t.cards('all');
+            const onBoardIds = new Set(allCards.map(c => c.id));
 
-            for (let cardIndex = 0; cardIndex < exportData.length; cardIndex++) {
-                const { cardId, timeEntries } = exportData[cardIndex];
+            // Карточки, которые реально попадут в выгрузку, но которых нет на доске
+            // (архивные или удалённые) — их имена придётся доставать через REST.
+            const offBoardIds = exportData
+                .filter(cd => (cd.timeEntries && cd.timeEntries.length > 0) || includeEmpty)
+                .map(cd => cd.cardId)
+                .filter(id => !onBoardIds.has(id));
 
-                // Find card by ID
-                const card = allCards.find(c => c.id === cardId);
-                const cardName = card ? card.name : `Card ${cardId}`;
+            pendingExport = { exportData, hoursPerDay, allCards, includeEmpty, offBoardIds };
+            addDebugInfo(`Off-board cards needing REST: ${offBoardIds.length}`);
 
-                addDebugInfo(`Processing card ${cardIndex + 1}/${exportData.length}: ${cardName}`);
-
-                if (timeEntries && timeEntries.length > 0) {
-                    addDebugInfo(`Card ${cardName} has ${timeEntries.length} time entries`);
-
-                    timeEntries.forEach((entry, entryIndex) => {
-                        const dateStr = formatDateForDisplay(entry.work_date);
-                        const cardNameEscaped = cardName.replace(/"/g, '""');
-                        const userName = (entry.member_name || 'User').replace(/"/g, '""');
-                        const timeMinutes = entry.time_minutes || 0;
-                        const timeStr = TnMStorage.formatTime(timeMinutes, hoursPerDay);
-                        const description = (entry.description || '').replace(/"/g, '""');
-
-                        csvContent += `"${dateStr}","${cardNameEscaped}","${userName}","${timeStr}","${timeMinutes}","${description}"\n`;
-                        exportedRowsCount++;
-
-                        addDebugInfo(`Added entry ${entryIndex + 1}: ${dateStr} - ${timeStr} (${userName})`);
-                    });
-                } else if (includeEmpty) {
-                    const cardNameEscaped = cardName.replace(/"/g, '""');
-                    csvContent += `"","${cardNameEscaped}","","0m","0",""\n`;
-                    exportedRowsCount++;
-                    addDebugInfo(`Added empty entry for card: ${cardName}`);
-                }
-
-                const progressPercent = ((cardIndex + 1) / exportData.length) * 100;
-                progressBarFill.style.width = `${progressPercent}%`;
-                progressStatus.textContent = `Processed ${cardIndex + 1} of ${exportData.length} cards`;
-            }
-
-            addDebugInfo(`Export completed. Total rows exported: ${exportedRowsCount}`);
-
-            if (exportedRowsCount === 0) {
-                showError('No data found for export. Check your date filter settings.');
+            if (offBoardIds.length === 0) {
+                // Всё на доске — REST не нужен, авторизация НЕ запрашивается.
+                await finishExport({});
                 return;
             }
 
-            // Create download link
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
+            // Есть off-board карточки → нужен REST. Проверяем авторизацию (тоже только сейчас).
+            const restApi = t.getRestApi();
+            let authorized = false;
+            try {
+                authorized = await restApi.isAuthorized();
+            } catch (e) {
+                addDebugInfo(`isAuthorized() failed: ${e && e.message}`);
+                authorized = false;
+            }
 
-            // Create filename with current date
-            const now = new Date();
-            const fileName = `trello-time-export-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
-
-            link.href = url;
-            link.setAttribute('download', fileName);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from Supabase`;
-
-            // Hide progress after a short delay
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-                progressBarFill.style.width = '0%';
-            }, 3000);
-
+            if (authorized) {
+                const nameMap = await resolveOffBoardNames(restApi, offBoardIds);
+                await finishExport(nameMap);
+            } else {
+                // authorize() должен вызываться прямым кликом пользователя, иначе браузер
+                // заблокирует попап авторизации — поэтому показываем промпт с кнопкой.
+                showAuthPrompt();
+            }
         } catch (error) {
             console.error('Error exporting data:', error);
             showError('Error exporting data: ' + error.message);
             addDebugInfo(`Export error: ${error.message}`);
         }
+    }
+
+    // Клик "Allow & continue" — прямой пользовательский жест для authorize().
+    async function onAuthAllow() {
+        hideAuthPrompt();
+        const progressContainer = document.getElementById('progress-container');
+        const progressStatus = document.getElementById('progress-status');
+        progressContainer.style.display = 'block';
+        progressStatus.textContent = 'Authorizing with Trello...';
+
+        const restApi = t.getRestApi();
+        try {
+            await restApi.authorize({ scope: 'read', expiration: 'never' });
+        } catch (e) {
+            addDebugInfo(`Authorization cancelled/failed: ${e && e.message}`);
+            // Не авторизовались — выгружаем без имён off-board карточек (legacy-фолбэк).
+            await finishExport({});
+            return;
+        }
+
+        try {
+            const nameMap = await resolveOffBoardNames(restApi, pendingExport.offBoardIds);
+            await finishExport(nameMap);
+        } catch (error) {
+            console.error('Error resolving card names:', error);
+            showError('Error resolving card names: ' + error.message);
+        }
+    }
+
+    // Клик "Export without names" — пропускаем авторизацию и REST.
+    async function onAuthSkip() {
+        hideAuthPrompt();
+        await finishExport({});
+    }
+
+    // Достаём имена/статусы off-board карточек через Trello REST (по одному id).
+    // 200 + closed:true → архивная; 200 + closed:false → открыта (напр. перенесена
+    // на другую доску); 404 → удалена.
+    async function resolveOffBoardNames(restApi, ids) {
+        const token = await restApi.getToken();
+        const map = {};
+        const progressStatus = document.getElementById('progress-status');
+        document.getElementById('progress-container').style.display = 'block';
+
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            progressStatus.textContent = `Resolving archived/deleted names ${i + 1}/${ids.length}...`;
+            try {
+                const res = await fetch(
+                    `https://api.trello.com/1/cards/${id}?fields=name,closed&key=${TRELLO_API_KEY}&token=${token}`
+                );
+                if (res.status === 404) {
+                    // Карточка удалена — имени в Trello уже нет, показываем id.
+                    map[id] = `[deleted] ${id}`;
+                } else if (res.ok) {
+                    const card = await res.json();
+                    map[id] = card.closed ? `[archived] ${card.name}` : card.name;
+                } else {
+                    // 401 / прочее — деградируем на legacy-фолбэк.
+                    addDebugInfo(`REST ${res.status} for card ${id}`);
+                    map[id] = `Card ${id}`;
+                }
+            } catch (e) {
+                addDebugInfo(`REST error for card ${id}: ${e && e.message}`);
+                map[id] = `Card ${id}`;
+            }
+        }
+        return map;
+    }
+
+    // Финальная сборка CSV и скачивание. offBoardNameMap: trello_card_id → готовое имя.
+    async function finishExport(offBoardNameMap) {
+        const { exportData, hoursPerDay, allCards, includeEmpty } = pendingExport;
+        const onBoardNames = new Map(allCards.map(c => [c.id, c.name]));
+
+        const progressContainer = document.getElementById('progress-container');
+        const progressBarFill = document.getElementById('progress-bar-fill');
+        const progressStatus = document.getElementById('progress-status');
+        progressContainer.style.display = 'block';
+
+        let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
+        let exportedRowsCount = 0;
+
+        for (let cardIndex = 0; cardIndex < exportData.length; cardIndex++) {
+            const { cardId, timeEntries } = exportData[cardIndex];
+
+            // Имя: с доски (без префикса) → из REST-карты (с [archived]/[deleted]) → legacy-фолбэк.
+            const cardName = onBoardNames.has(cardId)
+                ? onBoardNames.get(cardId)
+                : (offBoardNameMap[cardId] || `Card ${cardId}`);
+
+            addDebugInfo(`Processing card ${cardIndex + 1}/${exportData.length}: ${cardName}`);
+
+            if (timeEntries && timeEntries.length > 0) {
+                timeEntries.forEach((entry) => {
+                    const dateStr = formatDateForDisplay(entry.work_date);
+                    const timeMinutes = entry.time_minutes || 0;
+                    const timeStr = TnMStorage.formatTime(timeMinutes, hoursPerDay);
+
+                    csvContent += `"${dateStr}","${csvCell(cardName)}","${csvCell(entry.member_name || 'User')}","${timeStr}","${timeMinutes}","${csvCell(entry.description || '')}"\n`;
+                    exportedRowsCount++;
+                });
+            } else if (includeEmpty) {
+                csvContent += `"","${csvCell(cardName)}","","0m","0",""\n`;
+                exportedRowsCount++;
+            }
+
+            const progressPercent = ((cardIndex + 1) / exportData.length) * 100;
+            progressBarFill.style.width = `${progressPercent}%`;
+            progressStatus.textContent = `Processed ${cardIndex + 1} of ${exportData.length} cards`;
+        }
+
+        addDebugInfo(`Export completed. Total rows exported: ${exportedRowsCount}`);
+
+        if (exportedRowsCount === 0) {
+            showError('No data found for export. Check your date filter settings.');
+            return;
+        }
+
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        const now = new Date();
+        const fileName = `trello-time-export-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.csv`;
+
+        link.href = url;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        progressStatus.textContent = `Export completed: ${exportedRowsCount} rows exported from Supabase`;
+        setExporting(false);
+
+        // Hide progress after a short delay
+        setTimeout(() => {
+            progressContainer.style.display = 'none';
+            progressBarFill.style.width = '0%';
+        }, 3000);
     }
 
     // Function to display error
@@ -342,21 +489,19 @@
 
         // Hide progress
         document.getElementById('progress-container').style.display = 'none';
+        setExporting(false);
     }
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize date fields
         initDateFields();
 
-        // Handler for export button
         document.getElementById('export-btn').addEventListener('click', function() {
-            // Hide previous errors
             document.getElementById('error-message').style.display = 'none';
-
-            // Start export
-            exportToCSV();
+            startExport();
         });
+        document.getElementById('auth-allow-btn').addEventListener('click', onAuthAllow);
+        document.getElementById('auth-skip-btn').addEventListener('click', onAuthSkip);
     });
 </script>
 </body>
