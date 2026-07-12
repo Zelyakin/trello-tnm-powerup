@@ -390,7 +390,16 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 3.0 (Current - Minute-Based Storage)
+### Version 3.3 (Current) - Readable Export
+
+**New features:**
+- ✅ **Archived/deleted card names in CSV export**: off-board cards now resolve to `[archived] <name>` / `[deleted] <id>` via the Trello REST API instead of a bare `Card <id>`
+- ✅ **Opt-in and read-only**: name resolution is off by default; enabling it asks the exporter once for read-only Trello access (30-day token, revocable anytime)
+
+**Improvements:**
+- CSV output hardened against formula injection; Export button disabled while a run is in progress; tidier export dialog
+
+### Version 3.0 - Minute-Based Storage
 
 **Major features:**
 - ✅ **Minute-based storage system**: All time stored as minutes internally

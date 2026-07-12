@@ -8,12 +8,13 @@ This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses S
 
 > **See `TODO.md`** for the list of pending fixes (broken legacy views, dead methods, settings screen redesign).
 
-**Key Features (v3.0)**:
+**Key Features (v3.3)**:
 - Minute-based storage system for flexible time display
 - Configurable hours per day: 8h workday OR 24h calendar day (per-board setting)
 - Auto-refresh when settings change (selective cache invalidation)
 - Optimized batch queries for board statistics
 - Advanced caching with race condition protection (v3.1)
+- Archived/deleted card names in CSV export via Trello REST — opt-in, read-only (v3.3)
 
 ## Architecture
 
