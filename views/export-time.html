@@ -142,7 +142,7 @@
         <div class="checkbox-group">
             <label>
                 <input type="checkbox" id="resolve-names">
-                Resolve names of archived/deleted cards (needs Trello read access)
+                Resolve names of archived cards (needs Trello read access)
             </label>
         </div>
     </div>
@@ -154,7 +154,7 @@
     <p class="note">Note: All time tracking data from the board will be exported.</p>
 
     <div class="auth-prompt" id="auth-prompt">
-        <p>Showing real names for archived/deleted cards needs <strong>read-only</strong> Trello
+        <p>Showing real names for archived cards needs <strong>read-only</strong> Trello
            access. Trello grants this at the account level (there is no per-board scope) and will
            phrase it as "account access" — it stays read-only, expires in 30 days, and you can
            revoke it anytime in your Trello settings. You can also export now with placeholder names.</p>
@@ -221,7 +221,11 @@
     // Function to format date in readable form
     function formatDateForDisplay(dateString) {
         if (!dateString) return '';
-        const date = new Date(dateString);
+        // work_date — календарная дата без TZ; date-only парсим как локальную дату,
+        // иначе new Date() трактует её как UTC-полночь и день сдвигается назад западнее UTC.
+        // Якорь на $ — чтобы полные таймстемпы шли через new Date(), а не резались по префиксу.
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+        const date = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateString);
         if (isNaN(date.getTime())) return '';
 
         return date.toLocaleDateString();
@@ -404,7 +408,7 @@
 
         for (let i = 0; i < ids.length; i++) {
             const id = ids[i];
-            progressStatus.textContent = `Resolving archived/deleted names ${i + 1}/${ids.length}...`;
+            progressStatus.textContent = `Resolving archived names ${i + 1}/${ids.length}...`;
             try {
                 const res = await fetch(
                     `https://api.trello.com/1/cards/${id}?fields=name,closed&key=${TRELLO_API_KEY}&token=${token}`

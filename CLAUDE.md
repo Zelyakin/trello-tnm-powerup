@@ -8,13 +8,14 @@ This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses S
 
 > **See `TODO.md`** for the list of pending fixes (broken legacy views, dead methods, settings screen redesign).
 
-**Key Features (v3.3)**:
+**Key Features (v3.4)**:
 - Minute-based storage system for flexible time display
 - Configurable hours per day: 8h workday OR 24h calendar day (per-board setting)
 - Auto-refresh when settings change (selective cache invalidation)
 - Optimized batch queries for board statistics
 - Advanced caching with race condition protection (v3.1)
 - Archived/deleted card names in CSV export via Trello REST — opt-in, read-only (v3.3)
+- Timezone-correct calendar dates: `work_date` never shifts by a day for users west of UTC (v3.4)
 
 ## Architecture
 
@@ -334,6 +335,41 @@ Fix (this is the **only** place the Power-Up touches the Trello REST API):
   `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
   board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`
   fallback (export never breaks). Status is encoded as a name prefix — no separate CSV column.
+
+### 10. Date & Timezone Handling (v3.4)
+
+**Invariant**: `work_date` is a **calendar date** (`YYYY-MM-DD`, PostgreSQL `date` type) — it has
+no time and no timezone. It must never be round-tripped through `new Date(isoString)` and then read
+back with local getters (`getDate()`, `toLocaleDateString()`, `toISOString()`), because
+`new Date("2026-07-13")` is parsed as **UTC midnight** and any local read shifts the calendar day
+by one for users **west of UTC** (negative offset). This was the v3.4 bug: an entry saved for
+2026-07-13 displayed as 2026-07-12 for a US user, while it looked correct in Tashkent/Moscow (east of UTC).
+
+Rules for anyone touching dates:
+
+- **Displaying `work_date`**: parse the date-only string as a **local** date. The shared shape is:
+  ```js
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);      // anchored $ — see below
+  const date = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateString);
+  ```
+  The `$` anchor is **mandatory**: a real timestamp (`created_at`, `timestamptz`) must fall through
+  to `new Date()` so it converts to the correct *local* day — without the anchor the regex would
+  match the timestamp's date prefix and silently drop the time/zone. Lives in: `js/storage.js`
+  `formatDate`, `views/card-detail.html` + `views/card-back.html` `formatDate`,
+  `views/export-time.html` `formatDateForDisplay`.
+- **Serializing a `Date` into a `work_date` filter/value**: build the string from **local**
+  components (`getFullYear`/`getMonth`/`getDate`), never `toISOString().split('T')[0]`. The period
+  boundaries in `views/board-stats.html` (`getPeriodDates` builds them in local time) go through
+  `formatDateForAPI` into `work_date=gte./lte.` — using `toISOString()` there shifted the whole
+  period by a day (fixed in v3.4). Same pattern already correct in `card-detail.html` `initDateField`
+  and `export-time.html` `formatDateForInput`.
+- **The write path is already TZ-independent**: `card-detail.html` does
+  `new Date("YYYY-MM-DD").toISOString()` and `addTimeEntry` does `.split('T')[0]` — this round-trips
+  through UTC symmetrically, so the user's picked calendar day is stored correctly in *any* timezone.
+  The `addTimeRecord` fallback (when no `workDate` is passed) uses **local today**, not
+  `toISOString()`, for the same reason.
+- **`export-time.html` export range is correct**: it passes the raw `<input type="date">` string
+  values (`YYYY-MM-DD`) straight to the query, not `Date` objects — no conversion, no shift.
 
 ## Deployment
 

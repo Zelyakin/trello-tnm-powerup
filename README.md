@@ -390,7 +390,16 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 3.3 (Current) - Readable Export
+### Version 3.4 (Current) - Timezone-Correct Dates
+
+**Bug fixes:**
+- ✅ **Work date no longer shifts by a day**: entries saved for a given date now display on that exact date regardless of the viewer's timezone. Previously, for users **west of UTC** (e.g. the Americas), a date saved as e.g. Jul 13 showed as Jul 12 — because a bare calendar date was being interpreted as UTC midnight and then rendered in local time. Card badges, card back, card detail and CSV export are all fixed.
+- ✅ **Board statistics period boundaries fixed**: the "current month / last month / current week" filters no longer include or drop an edge day. The period boundaries were serialized via `toISOString()` (UTC), which shifted the `work_date` filter by a day — affecting users **both east and west** of UTC (e.g. a "Current Month" in UTC+5 wrongly pulled in the last day of the previous month and dropped the last day of the current one).
+
+**Notes:**
+- Display/query-side only — **data stored in the database was always correct**, so no migration is needed. Existing entries simply render on the right day now.
+
+### Version 3.3 - Readable Export
 
 **New features:**
 - ✅ **Archived/deleted card names in CSV export**: off-board cards now resolve to `[archived] <name>` / `[deleted] <id>` via the Trello REST API instead of a bare `Card <id>`
