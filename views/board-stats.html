@@ -234,7 +234,13 @@
 
     function formatDateForAPI(date) {
         if (!date) return null;
-        return date.toISOString().split('T')[0];
+        // getPeriodDates строит границы в ЛОКАЛЬНОМ времени, а work_date в БД — локальная
+        // календарная дата. toISOString() дал бы UTC-сдвиг границ на день (тот же класс TZ-бага,
+        // что и в formatDate) и сместил бы gte/lte-фильтр периода. Сериализуем локальный день.
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     }
 
     function isDateInRange(dateString, startDate, endDate) {

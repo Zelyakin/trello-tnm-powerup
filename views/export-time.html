@@ -221,7 +221,11 @@
     // Function to format date in readable form
     function formatDateForDisplay(dateString) {
         if (!dateString) return '';
-        const date = new Date(dateString);
+        // work_date — календарная дата без TZ; date-only парсим как локальную дату,
+        // иначе new Date() трактует её как UTC-полночь и день сдвигается назад западнее UTC.
+        // Якорь на $ — чтобы полные таймстемпы шли через new Date(), а не резались по префиксу.
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+        const date = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateString);
         if (isNaN(date.getTime())) return '';
 
         return date.toLocaleDateString();

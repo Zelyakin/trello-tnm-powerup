@@ -39,6 +39,9 @@
 
 Уже записанные значения в Trello board storage остаются как dead-ключ (одно поле с timestamp на доску) — миграция для зачистки нецелесообразна.
 
+### 12. `isDateInRange()` в `board-stats.html` — мёртвая + латентный TZ-баг
+[views/board-stats.html:240](views/board-stats.html:240) `isDateInRange()` нигде не вызывается — фильтрация периода целиком на сервере (`work_date` gte/lte в `getBoardStats`, [js/supabase-api.js:424](js/supabase-api.js:424)). Вдобавок метод парсит date-only `work_date` через `new Date(dateString)` (UTC-полночь) и сравнивает с локально построенными `startDate`/`endDate` — тот же класс TZ off-by-one, что чинили в `formatDate`/`formatDateForAPI` (2026-07-15). Кандидат на удаление; если понадобится клиентская фильтрация — сравнивать календарные строки без `new Date()`.
+
 ---
 
 ## ⚡ Оптимизация запросов к Supabase

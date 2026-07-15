@@ -197,7 +197,7 @@ const SupabaseAPI = {
                 timeMinutes: entry.time_minutes || 0,
                 description: entry.description,
                 date: entry.created_at,
-                workDate: entry.work_date + 'T00:00:00.000Z',
+                workDate: entry.work_date, // календарная дата без TZ; см. formatDate — не добавляем время/зону
                 memberId: entry.trello_member_id,
                 memberName: entry.member_name,
                 timestampId: entry.trello_entry_id

@@ -59,10 +59,16 @@ const TnMStorage = {
                     hoursPerDay
                 );
 
+                // Фолбэк — ЛОКАЛЬНЫЙ сегодняшний день (консистентно с дефолтом пикера в
+                // card-detail.html). new Date().toISOString() дал бы UTC-'сегодня' и для зон
+                // западнее UTC поздним вечером записал бы work_date на день ВПЕРЁД.
+                const now = new Date();
+                const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
                 const entry = {
                     timeMinutes: totalMinutes,
                     description: description || '',
-                    workDate: workDate || new Date().toISOString(),
+                    workDate: workDate || todayLocal,
                     memberId: memberId,
                     memberName: memberName,
                     timestampId: Date.now()
@@ -155,7 +161,13 @@ const TnMStorage = {
 
     formatDate: function(dateString) {
         if (!dateString) return '';
-        const date = new Date(dateString);
+        // work_date — календарная дата без времени/зоны. date-only ("YYYY-MM-DD")
+        // парсим как локальную дату, иначе new Date() трактует её как UTC-полночь
+        // и toLocaleDateString() сдвигает день назад для зон западнее UTC.
+        // Якорь на $ обязателен: полные таймстемпы (created_at) должны идти через
+        // new Date() и конвертироваться в локальный день, а не резаться по префиксу.
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+        const date = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateString);
         if (isNaN(date.getTime())) return '';
         return date.toLocaleDateString();
     },
