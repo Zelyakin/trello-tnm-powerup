@@ -243,18 +243,6 @@
         return `${y}-${m}-${d}`;
     }
 
-    function isDateInRange(dateString, startDate, endDate) {
-        if (!dateString) return false;
-
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return false;
-
-        if (startDate && date < startDate) return false;
-        if (endDate && date > endDate) return false;
-
-        return true;
-    }
-
     function calculateDaysBetween(startDate, endDate) {
         if (!startDate || !endDate) return 1;
         const diffTime = Math.abs(endDate - startDate);

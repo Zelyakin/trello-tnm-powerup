@@ -35,12 +35,12 @@
 ### 6. ✅ `tnm-cache-version` — write-call удалён в `settings.html`
 В [views/settings.html](views/settings.html) убрана обёртка `t.set('board','shared','tnm-cache-version', Date.now())` вокруг закрытия попапа после "Clear Cache and Reload" — ключ нигде не читался по существу, оставался от старой схемы инвалидации до появления `tnm-settings-updated`.
 
-Последнее упоминание `'tnm-cache-version'` живёт в [views/storage-stats.html:263](views/storage-stats.html:263) (массив `boardKeys` для подсчёта размера storage) — уйдёт вместе с самим файлом по п.2.
+Последнее упоминание ключа ушло вместе с `views/storage-stats.html` (см. п.2) — в коде его больше нет.
 
 Уже записанные значения в Trello board storage остаются как dead-ключ (одно поле с timestamp на доску) — миграция для зачистки нецелесообразна.
 
-### 12. `isDateInRange()` в `board-stats.html` — мёртвая + латентный TZ-баг
-[views/board-stats.html:240](views/board-stats.html:240) `isDateInRange()` нигде не вызывается — фильтрация периода целиком на сервере (`work_date` gte/lte в `getBoardStats`, [js/supabase-api.js:424](js/supabase-api.js:424)). Вдобавок метод парсит date-only `work_date` через `new Date(dateString)` (UTC-полночь) и сравнивает с локально построенными `startDate`/`endDate` — тот же класс TZ off-by-one, что чинили в `formatDate`/`formatDateForAPI` (2026-07-15). Кандидат на удаление; если понадобится клиентская фильтрация — сравнивать календарные строки без `new Date()`.
+### 12. ✅ `isDateInRange()` в `board-stats.html` — удалена
+Функция нигде не вызывалась — фильтрация периода целиком на сервере (`work_date` gte/lte в `getBoardStats`, [js/supabase-api.js](js/supabase-api.js)). Вдобавок она парсила date-only `work_date` через `new Date(dateString)` (UTC-полночь) и сравнивала с локально построенными `startDate`/`endDate` — тот же класс TZ off-by-one, что чинили в `formatDate`/`formatDateForAPI` (v3.4). Удалена из [views/board-stats.html](views/board-stats.html); если когда-нибудь понадобится клиентская фильтрация — сравнивать календарные строки `YYYY-MM-DD` напрямую, без `new Date()`.
 
 ---
 
@@ -122,7 +122,7 @@ allCards.forEach(c => this._cardDataCache.set(`badge_${c.trello_card_id}`, {
 
 ⚠️ **UX-нюанс (решён):** `read`-скоуп у Trello даёт токен на чтение **всего аккаунта** (пер-бордового скоупа в этом флоу нет), consent-экран пишет «доступ к аккаунту» — на месте пользователя это отпугивает. Решение: резолв сделан **opt-in** (дефолтный экспорт авторизацию не триггерит вообще); текст промпта заранее предупреждает про account-level; токен на 30 дней с отзывом в любой момент. Промпт при показе прячет форму фильтра (не уезжает под фолд), debug-панель убрана из UI в консоль.
 
-⚠️ **Требуется разовая настройка:** вставить публичный API-ключ Power-Up'а в `TRELLO_API_KEY` ([views/export-time.html](views/export-time.html)) и добавить origin в Allowed origins ключа. См. README → Configuration → Trello REST API. До установки ключа фича неактивна, экспорт работает по-старому.
+✅ **Разовая настройка выполнена:** публичные API-ключи вставлены в `TRELLO_API_KEY` ([views/export-time.html](views/export-time.html)) — по ключу на каждый деплой, выбор по `location.hostname` (prod `pages.dev` / dev `github.io`), в Allowed origins каждого ключа прописан только его origin. См. README → Configuration → Trello REST API.
 
 ### 11. Флажки типов карточек в экспорте (на будущее)
 
