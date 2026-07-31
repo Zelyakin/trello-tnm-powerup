@@ -390,7 +390,17 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 3.4 (Current) - Timezone-Correct Dates
+### Version 3.5 (Current) - Constant-Cost Board Loading
+
+**Improvements:**
+- ✅ **Badges now cost one request per board instead of one per card**: opening a board loads every card's total in a single query, so a 270-card board is as cheap as a 5-card one (measured: ~264 KB → ~4 KB of traffic, 3 requests total regardless of board size)
+- ✅ Cards with no tracked time are filtered out server-side — they render no badge anyway
+
+**Notes:**
+- No database or schema changes; nothing to migrate
+- Behaviour is unchanged for users: same badges, same 60-second freshness. If the prefetch fails for any reason, the Power-Up silently falls back to the previous per-card lookups
+
+### Version 3.4 - Timezone-Correct Dates
 
 **Bug fixes:**
 - ✅ **Work date no longer shifts by a day**: entries saved for a given date now display on that exact date regardless of the viewer's timezone. Previously, for users **west of UTC** (e.g. the Americas), a date saved as e.g. Jul 13 showed as Jul 12 — because a bare calendar date was being interpreted as UTC midnight and then rendered in local time. Card badges, card back, card detail and CSV export are all fixed.

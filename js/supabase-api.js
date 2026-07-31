@@ -9,6 +9,8 @@ const SupabaseAPI = {
     _boardSettingsCache: new Map(),  // Кэш настроек доски (trelloBoardId → settings)
     _boardIdPromises: new Map(),     // Промисы текущих запросов board_id (для защиты от race condition)
     _boardSettingsPromises: new Map(), // Промисы текущих запросов settings (для защиты от race condition)
+    _boardBadgePrefetch: new Map(),  // Когда для доски последний раз делался префетч бейджей
+    _boardBadgePromises: new Map(),  // Промисы текущих префетчей (для защиты от race condition)
     _lastSettingsUpdate: 0, // Timestamp последнего обновления настроек
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
@@ -116,8 +118,67 @@ const SupabaseAPI = {
         }
     },
 
+    // Префетч агрегатов ВСЕХ карточек доски одним запросом.
+    // Trello дёргает callback card-badges отдельно на каждую карточку, поэтому без префетча
+    // открытие доски = N запросов (на каждый ~950 B заголовков ради ~23 B тела).
+    // Фильтр time_minutes=gt.0: бейдж при нуле не рисуется (client.js), а нулевых карточек
+    // в базе ~90% — отсекаем их на сервере. Карточка, которой нет в ответе, трактуется как 0.
+    // Возвращает true, если кэш заполнен и на него можно опираться; false — фолбэк на
+    // пер-карточный запрос (например, если префетч упал).
+    async prefetchBoardBadges(trelloBoardId) {
+        const cacheKey = `prefetch_${trelloBoardId}`;
+
+        const prefetchedAt = this._boardBadgePrefetch.get(cacheKey);
+        if (prefetchedAt && this.isCacheValid(prefetchedAt, this.CARD_DATA_TTL)) {
+            return true;
+        }
+
+        // Защита от race condition: 100 callback'ов стартуют одновременно и без
+        // дедупликации дали бы 100 одинаковых full-board запросов.
+        const existingPromise = this._boardBadgePromises.get(cacheKey);
+        if (existingPromise) {
+            return existingPromise;
+        }
+
+        console.log(`Prefetching badge data for board ${trelloBoardId}`);
+
+        const promise = (async () => {
+            try {
+                const boardId = await this.getBoardId(trelloBoardId);
+
+                const cards = await this.request(
+                    `cards?select=trello_card_id,time_minutes&board_id=eq.${boardId}&time_minutes=gt.0`
+                );
+
+                const now = Date.now();
+                cards.forEach(card => {
+                    this._cardDataCache.set(`badge_${card.trello_card_id}`, {
+                        data: { timeMinutes: card.time_minutes || 0, history: [] },
+                        timestamp: now
+                    });
+                });
+
+                // Метку ставим ПОСЛЕ заполнения кэша: пока её нет, никто не сделает
+                // вывод "карточки нет в ответе → у неё ноль".
+                this._boardBadgePrefetch.set(cacheKey, now);
+                console.log(`Prefetched ${cards.length} card(s) with time for board ${trelloBoardId}`);
+
+                return true;
+            } catch (error) {
+                console.error('Error prefetching board badges:', error);
+                return false; // фолбэк на пер-карточный запрос
+            } finally {
+                this._boardBadgePromises.delete(cacheKey);
+            }
+        })();
+
+        this._boardBadgePromises.set(cacheKey, promise);
+
+        return promise;
+    },
+
     // Получение данных карточки ДЛЯ БЕЙДЖА (только агрегаты, БЕЗ history)
-    async getCardDataForBadge(trelloCardId) {
+    async getCardDataForBadge(trelloCardId, trelloBoardId) {
         try {
             const cacheKey = `badge_${trelloCardId}`;
 
@@ -127,9 +188,26 @@ const SupabaseAPI = {
                 return cached.data;
             }
 
+            // Основной путь: один запрос на всю доску вместо N запросов на N карточек.
+            if (trelloBoardId) {
+                const prefetched = await this.prefetchBoardBadges(trelloBoardId);
+
+                if (prefetched) {
+                    const fromPrefetch = this._cardDataCache.get(cacheKey);
+                    if (fromPrefetch && this.isCacheValid(fromPrefetch.timestamp, this.CARD_DATA_TTL)) {
+                        return fromPrefetch.data;
+                    }
+
+                    // Карточки нет в префетче → у неё нет затреканного времени.
+                    // Отдельной записи в кэш не делаем: сама метка префетча живёт TTL,
+                    // и до её протухания все такие карточки отвечают нулём без запросов.
+                    return { timeMinutes: 0, history: [] };
+                }
+            }
+
             console.log(`Fetching fresh badge data for ${trelloCardId}`);
 
-            // Запрашиваем ТОЛЬКО time_minutes, БЕЗ time_entries!
+            // Фолбэк: пер-карточный запрос. Запрашиваем ТОЛЬКО time_minutes, БЕЗ time_entries!
             const cards = await SupabaseAPI.request(
                 `cards?select=time_minutes&trello_card_id=eq.${trelloCardId}`
             );
@@ -224,6 +302,11 @@ const SupabaseAPI = {
     invalidateCardCache(trelloCardId) {
         this._cardDataCache.delete(`badge_${trelloCardId}`);
         this._cardDataCache.delete(`full_${trelloCardId}`);
+        // Метки префетча тоже сбрасываем: иначе карточка, которую мы только что удалили
+        // из кэша, попала бы под правило "нет в префетче → ноль" и бейдж показал бы 0
+        // вместо только что добавленного времени. Досок в этой Map единицы (обычно одна),
+        // сброс стоит одного повторного full-board запроса.
+        this._boardBadgePrefetch.clear();
         console.log(`Card cache invalidated for ${trelloCardId}`);
     },
 
@@ -472,6 +555,8 @@ const SupabaseAPI = {
         this._boardSettingsCache.clear();
         this._boardIdPromises.clear();
         this._boardSettingsPromises.clear();
+        this._boardBadgePrefetch.clear();
+        this._boardBadgePromises.clear();
         console.log('Supabase API cache cleared');
     },
 
