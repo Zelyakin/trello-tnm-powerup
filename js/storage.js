@@ -9,7 +9,8 @@ const TnMStorage = {
             SupabaseAPI.checkSettingsUpdate(t) // Проверяем обновление настроек
         ]).then(([card, board]) => {
             return Promise.all([
-                SupabaseAPI.getCardDataForBadge(card.id),
+                // board.id нужен для префетча агрегатов всей доски одним запросом
+                SupabaseAPI.getCardDataForBadge(card.id, board.id),
                 SupabaseAPI.getBoardSettings(board.id)
             ]).then(([cardData, settings]) => {
                 cardData.hoursPerDay = settings.hours_per_day;

@@ -143,16 +143,5 @@ TrelloPowerUp.initialize({
             url: './views/settings.html',
             height: 360
         });
-    },
-
-    // Listen for changes in board data to refresh badges when settings change
-    'on-enable': function(t) {
-        console.log('T&M Power-Up enabled');
-        return null;
-    },
-
-    'on-disable': function(t) {
-        console.log('T&M Power-Up disabled');
-        return null;
     }
 });

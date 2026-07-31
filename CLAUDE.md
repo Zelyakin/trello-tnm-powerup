@@ -33,6 +33,7 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
    - **Card Data Cache**: TTL-based (60s) for individual card time data
    - **Board ID Cache**: Cached mapping of `trelloBoardId → supabaseBoardId` (60s)
    - **Board Settings Cache**: Cached `hours_per_day` per board (60s)
+   - **Badge Prefetch Marker** (v3.5): per-board timestamp of the last full-board badge prefetch (60s)
    - **Race Condition Protection**: Promise deduplication prevents parallel duplicate requests
    - **Selective Invalidation**: Settings changes only clear settings cache, not card data
    - **Settings-aware**: Checks `board.shared.tnm-settings-updated` timestamp
@@ -41,9 +42,42 @@ The Power-Up uses a carefully optimized data flow to minimize API calls:
 
 3. **Badge Display Optimization**
    - Badge rendering fetches **only `time_minutes`** from `cards` table
+   - **One request per board, not per card** (v3.5) — see "Badge Prefetch" below
    - Full history (from `time_entries`) loaded only when card detail popup opens
    - Settings fetched once and cached for conversion to d/h/m display
-   - This reduces API calls by ~3x on board load
+
+### Badge Prefetch (v3.5)
+
+Trello invokes the `card-badges` callback **separately for every card**, so the naive
+implementation issues N requests per board load. Each one costs ~950 B of response headers
+(plus a CORS preflight) to deliver ~23 B of body — on this workload traffic is driven by
+**request count**, not payload size, which matters because the project must stay inside the
+Supabase free tier (5 GB egress/month).
+
+`prefetchBoardBadges(trelloBoardId)` ([js/supabase-api.js](js/supabase-api.js)) loads the
+aggregates of the whole board in one request and seeds `_cardDataCache`:
+
+```
+GET /cards?select=trello_card_id,time_minutes&board_id=eq.{id}&time_minutes=gt.0
+```
+
+Rules that keep it correct:
+
+- **`time_minutes=gt.0` is deliberate.** A zero-time card renders no badge at all
+  ([js/client.js](js/client.js)), and ~90% of rows in prod are zeros. A card **missing** from
+  the prefetch response is therefore read as `{ timeMinutes: 0 }` — no request, no cache entry.
+- **The marker is set after the cache is filled**, never before: until it exists, nothing is
+  allowed to conclude "absent ⇒ zero".
+- **Promise deduplication is mandatory** (same pattern as `getBoardId()`): 100 badge callbacks
+  fire simultaneously and would otherwise trigger 100 identical full-board requests.
+- **`invalidateCardCache()` clears the prefetch markers.** Without this, a card whose cache entry
+  was just dropped after a mutation would fall under "absent ⇒ zero" and show 0 instead of the
+  freshly added time. The cost is one re-prefetch (a single request).
+- **Fallback path is preserved.** `getCardDataForBadge(cardId, boardId)` falls back to the old
+  per-card query when `boardId` is absent or the prefetch throws, so a failure degrades to the
+  pre-v3.5 behaviour instead of showing wrong data.
+- Prefetch lives in the `client.js` iframe context. Popups and card-back are separate JS
+  contexts with their own cold caches — they do not benefit from it (see TODO п.18).
 
 ### File Structure
 
@@ -72,23 +106,26 @@ Caveat: detection is via `prefers-color-scheme` (OS-level). If Trello ever expos
 
 ### Data Flow Examples
 
-**Opening a board with 10 cards** (badge display) - **v3.1 Optimized**:
+**Opening a board with N cards** (badge display) - **v3.5 Optimized**:
 ```
 First card:
-  getCardDataForBadge()
+  getCardDataForBadge(cardId, boardId)
     → checkSettingsUpdate() - check timestamp (no API call if unchanged)
-    → GET /cards?select=time_minutes&trello_card_id=eq.{id}
-    → getBoardSettings() (cold) — internally calls getBoardId() first:
-        → GET /boards?select=id&trello_board_id=eq.{id}
+    → prefetchBoardBadges(boardId) (cold):
+        → GET /boards?select=id&trello_board_id=eq.{id}          (shared with getBoardSettings)
+        → GET /cards?select=trello_card_id,time_minutes&board_id=eq.{id}&time_minutes=gt.0
+        → seeds _cardDataCache for every card that has time
+    → getBoardSettings() - reuses the in-flight board ID promise:
         → GET /board_settings?select=hours_per_day&board_id=eq.{id}
 
-Remaining 9 cards (parallel):
-  getCardDataForBadge()
-    → checkSettingsUpdate() - uses cached timestamp
-    → GET /cards?select=time_minutes&trello_card_id=eq.{id}
-    → getBoardSettings() - waits for first card's promise, then uses cache (no API call)
+Remaining N-1 cards (parallel):
+  getCardDataForBadge(cardId, boardId)
+    → waits for the same prefetch promise, then reads _cardDataCache
+    → card absent from the prefetch ⇒ { timeMinutes: 0 }, no request
+    → getBoardSettings() - cache hit
 
-✓ Total: 10 card requests + 1 board ID + 1 settings = 12 requests (was 30!)
+✓ Total: 3 requests for the WHOLE board, regardless of N (was N + 2)
+✓ Measured on a real 270-card board: 2 requests / ~4 KB vs ~270 requests / ~264 KB
 ```
 
 **Opening card detail popup** (typically warm cache — settings already cached from badges):
@@ -392,11 +429,12 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
 
 ## Performance Notes
 
-**Current metrics** (after v3.1 optimizations):
-- Opening board with 10 cards: **12 requests** (was 30 before v3.1, was 48 before v3.0)
-  - 10 × `/cards` (one per card)
+**Current metrics** (after v3.5 optimizations):
+- Opening a board of **any** size: **3 requests** (was 12 for 10 cards in v3.1, 30 in v3.0, 48 before)
+  - 1 × `/cards` — full-board badge prefetch, one row per card **with time > 0**
   - 1 × `/boards` (cached across all cards)
   - 1 × `/board_settings` (cached across all cards)
+  - No longer scales with card count — a 270-card board costs the same 3 requests as a 5-card one
 - Opening card detail: **2 requests** with warm cache (settings already cached from badges); up to 4 with fully cold cache. Was 4 before v3.0.
 - Board statistics: **1 request warm / 2 cold** (was 3 in v3.0–v3.1, was N+2 before v3.0)
 - Export (any board size): **2 parallel requests** (was N+1 sequential before v3.2)
@@ -405,6 +443,7 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
 - Settings change: selective cache invalidation (only settings, not card data)
 
 **Performance techniques used**:
+- **Full-board badge prefetch** (v3.5) — one query seeds the cache for every card on the board
 - **Multi-level caching** (card data, board ID, board settings)
 - **Promise deduplication** to prevent parallel duplicate requests
 - **Selective cache invalidation** (settings don't invalidate card data)
@@ -416,10 +455,11 @@ SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
 - Settings-aware caching with timestamp tracking
 
 **Optimization Impact**:
-| Operation | Before v3.0 | v3.0 | v3.1 | Improvement |
-|-----------|-------------|------|------|-------------|
-| Open board (10 cards) | 48 requests | 30 requests | **12 requests** | **75% reduction** |
-| Change settings | N/A | ~11 requests | **1 request** | **90% reduction** |
+| Operation | Before v3.0 | v3.0 | v3.1 | v3.5 | Improvement |
+|-----------|-------------|------|------|------|-------------|
+| Open board (10 cards) | 48 requests | 30 requests | 12 requests | **3 requests** | **94% reduction** |
+| Open board (270 cards) | ~1080 requests | ~810 requests | ~272 requests | **3 requests** | **~99% reduction** |
+| Change settings | N/A | ~11 requests | **1 request** | 1 request | **90% reduction** |
 
 ## Common Tasks
 
