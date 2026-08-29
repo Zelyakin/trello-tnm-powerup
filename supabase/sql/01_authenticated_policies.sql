@@ -8,16 +8,24 @@
 --
 -- Типы сверены с фактической схемой (2026-08-29): boards.id uuid, boards.trello_board_id text,
 -- cards.board_id uuid, time_entries.card_id uuid.
+--
+-- Скрипт идемпотентен и обёрнут в транзакцию: при повторном прогоне между drop policy и
+-- create policy иначе возникало бы окно без политики, а клиенты уже ходят с токенами.
+
+begin;
 
 -- Внутренний id доски по клейму из токена.
--- SECURITY DEFINER — чтобы обойти RLS на boards внутри самой функции и не плодить лишних
--- проверок на каждой строке. Функция не опасна: она умеет вернуть только ту доску, чей
--- trello_board_id совпадает с клеймом в токене вызывающего.
+-- SECURITY INVOKER (а не DEFINER): политика boards_select и так открывает ровно одну строку —
+-- ту, чей trello_board_id совпадает с клеймом вызывающего, то есть ту же самую, которую ищет
+-- функция. Результат идентичен, рекурсии нет (политика boards не ссылается на cards), а
+-- накладных расходов не возникает: в политиках функция обёрнута в (select …) и вычисляется
+-- один раз на запрос. DEFINER здесь дал бы те же права при более широком режиме — и Security
+-- Advisor справедливо помечает такие функции как лишний риск.
 create or replace function public.current_board_id()
 returns uuid
 language sql
 stable
-security definer
+security invoker
 set search_path = public
 as $$
   select b.id
@@ -101,3 +109,5 @@ create policy tnm_time_entries_delete on public.time_entries
 -- board_settings.id — serial (nextval), поэтому вставка требует прав на последовательность.
 -- У остальных таблиц PK это uuid с gen_random_uuid(), им последовательности не нужны.
 grant usage, select on all sequences in schema public to authenticated;
+
+commit;
