@@ -73,6 +73,15 @@ Rules that keep it correct:
 - **`invalidateCardCache()` clears the prefetch markers.** Without this, a card whose cache entry
   was just dropped after a mutation would fall under "absent ⇒ zero" and show 0 instead of the
   freshly added time. The cost is one re-prefetch (a single request).
+- **Cross-iframe staleness is handled by `tnm-lastUpdate`, not by `invalidateCardCache()`.**
+  A mutation happens in the *card-detail popup*, a separate JS context: its `invalidateCardCache()`
+  never reaches the board iframe where badges render, so the badge kept serving its cached value
+  for the rest of the 60 s TTL. The popup already writes `t.set('card','shared','tnm-lastUpdate')`
+  (card-back polls it); `getCardDataForBadge(cardId, boardId, lastUpdate)` now reads it too and
+  calls `dropStaleBadgeCache()`. Trello-storage read, no HTTP added.
+  The marker is checked **separately from the card's own cache entry**: a card with no tracked time
+  is absent from the prefetch and has no entry at all, so dropping only the entry would leave it
+  under "absent ⇒ zero" and hide the very first entry logged against it.
 - **Fallback path is preserved.** `getCardDataForBadge(cardId, boardId)` falls back to the old
   per-card query when `boardId` is absent or the prefetch throws, so a failure degrades to the
   pre-v3.5 behaviour instead of showing wrong data.

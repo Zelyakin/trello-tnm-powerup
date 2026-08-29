@@ -11,11 +11,15 @@ const TnMStorage = {
         return Promise.all([
             t.card('id'),
             t.board('id'),
+            // Метку ставит попап card-detail после добавления/удаления записи. Читаем её,
+            // чтобы бейдж не показывал устаревшее значение из кэша контекста доски:
+            // инвалидация в попапе до этого контекста не доходит (разные iframe'ы).
+            t.get('card', 'shared', 'tnm-lastUpdate', 0),
             SupabaseAPI.checkSettingsUpdate(t) // Проверяем обновление настроек
-        ]).then(([card, board]) => {
+        ]).then(([card, board, lastUpdate]) => {
             return Promise.all([
                 // board.id нужен для префетча агрегатов всей доски одним запросом
-                SupabaseAPI.getCardDataForBadge(card.id, board.id),
+                SupabaseAPI.getCardDataForBadge(card.id, board.id, lastUpdate),
                 SupabaseAPI.getBoardSettings(board.id)
             ]).then(([cardData, settings]) => {
                 cardData.hoursPerDay = settings.hours_per_day;

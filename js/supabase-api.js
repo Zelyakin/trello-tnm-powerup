@@ -257,10 +257,39 @@ const SupabaseAPI = {
         return promise;
     },
 
+    // Сброс кэша бейджа, если карточку изменили в ДРУГОМ iframe'е.
+    // invalidateCardCache() отрабатывает в контексте попапа card-detail и чистит только его
+    // собственные Map'ы — до контекста доски, где рисуется бейдж, это не доходит, и бейдж
+    // до конца TTL показывает старое значение. Попап оставляет метку tnm-lastUpdate в card
+    // shared storage; сравниваем её с моментом кэширования. Чтение метки локальное
+    // (Trello storage), HTTP-запросов не добавляет.
+    dropStaleBadgeCache(trelloCardId, trelloBoardId, lastUpdate) {
+        if (!lastUpdate) return;
+
+        const cacheKey = `badge_${trelloCardId}`;
+        const cached = this._cardDataCache.get(cacheKey);
+        if (cached && lastUpdate > cached.timestamp) {
+            this._cardDataCache.delete(cacheKey);
+        }
+
+        // Метку префетча проверяем ОТДЕЛЬНО от записи карточки. Карточки без времени в
+        // префетч не попадают и своей записи в кэше не имеют — если сбросить только запись,
+        // такая карточка останется под правилом "нет в префетче → ноль" и первое же
+        // затреканное на неё время не покажется до конца TTL.
+        if (!trelloBoardId) return;
+        const prefetchKey = `prefetch_${trelloBoardId}`;
+        const prefetchedAt = this._boardBadgePrefetch.get(prefetchKey);
+        if (prefetchedAt && lastUpdate > prefetchedAt) {
+            this._boardBadgePrefetch.delete(prefetchKey);
+        }
+    },
+
     // Получение данных карточки ДЛЯ БЕЙДЖА (только агрегаты, БЕЗ history)
-    async getCardDataForBadge(trelloCardId, trelloBoardId) {
+    async getCardDataForBadge(trelloCardId, trelloBoardId, lastUpdate) {
         try {
             const cacheKey = `badge_${trelloCardId}`;
+
+            this.dropStaleBadgeCache(trelloCardId, trelloBoardId, lastUpdate);
 
             const cached = this._cardDataCache.get(cacheKey);
             if (cached && this.isCacheValid(cached.timestamp, this.CARD_DATA_TTL)) {
