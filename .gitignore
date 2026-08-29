@@ -15,3 +15,8 @@ npm-debug.log*
 *.bak
 *.swp
 *~
+
+# Supabase: секреты Edge Functions (JWT-секрет проекта) — только локально
+supabase/.env.secrets
+# Локальное состояние CLI после supabase link
+supabase/.temp/

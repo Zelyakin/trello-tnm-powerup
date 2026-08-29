@@ -3,6 +3,22 @@ const SupabaseAPI = {
     SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwemJ2ZHl4bXpxd2VvZ2h0Z3pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTYyNTksImV4cCI6MjA2NDA5MjI1OX0.v61HycgpmbSxjXUkXzD6LGX5rcOmXgJv2n7EFx7Naxs',
 
+    // --- Авторизация (см. PLAN_SECURITY.md) ---
+    // Клиент меняет подписанный Trello JWT на короткоживущий токен Supabase с клеймом
+    // trello_board_id — по нему режут доступ политики RLS. Anon-ключ остаётся только
+    // заголовком apikey («пропуск на порог» PostgREST) и сам по себе прав не даёт.
+    AUTH_FUNCTION_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co/functions/v1/trello-auth',
+
+    // Фича-флаг на время выката: если обмен не удался, продолжаем работать на anon-ключе.
+    // УБРАТЬ после Фазы 4 плана — иначе он навсегда останется обходом всей схемы.
+    ALLOW_ANON_FALLBACK: true,
+
+    TOKEN_REFRESH_SKEW_MS: 5 * 60 * 1000, // обновляем токен за 5 минут до истечения
+
+    _trelloContext: null,      // t текущего iframe — единственный источник Trello JWT
+    _accessToken: null,        // { token, expiresAt }, expiresAt в секундах
+    _accessTokenPromise: null, // промис текущего обмена (защита от race condition)
+
     // Кеш с TTL
     _cardDataCache: new Map(),
     _boardIdCache: new Map(),        // Кэш board_id (trelloBoardId → supabaseBoardId)
@@ -15,13 +31,77 @@ const SupabaseAPI = {
 
     CARD_DATA_TTL: 60 * 1000, // 60 секунд
 
+    // Регистрация контекста Trello. Вызывается один раз на JS-контекст: у попапов,
+    // card-back и доски свои независимые iframe'ы со своими холодными кэшами.
+    useTrelloContext(t) {
+        if (t) this._trelloContext = t;
+    },
+
+    // Токен для PostgREST: из кэша либо свежий обмен через Edge Function.
+    async getAccessToken() {
+        const cached = this._accessToken;
+        if (cached && Date.now() < cached.expiresAt * 1000 - this.TOKEN_REFRESH_SKEW_MS) {
+            return cached.token;
+        }
+
+        // Дедупликация: параллельные запросы ждут один обмен, а не запускают каждый свой
+        // (тот же приём, что в getBoardId() — бейджи стартуют десятками одновременно).
+        if (this._accessTokenPromise) {
+            return this._accessTokenPromise;
+        }
+
+        const t = this._trelloContext;
+        if (!t || typeof t.jwt !== 'function') {
+            console.warn('Trello context not registered — cannot mint Supabase token');
+            return null;
+        }
+
+        const promise = (async () => {
+            try {
+                const trelloJwt = await t.jwt();
+                const response = await fetch(this.AUTH_FUNCTION_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': this.SUPABASE_ANON_KEY
+                    },
+                    body: JSON.stringify({ token: trelloJwt })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`trello-auth ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                this._accessToken = { token: data.token, expiresAt: data.expiresAt };
+                console.log('Supabase access token minted');
+                return data.token;
+            } finally {
+                this._accessTokenPromise = null;
+            }
+        })();
+
+        this._accessTokenPromise = promise;
+        return promise;
+    },
+
     // Базовый HTTP клиент
     async request(endpoint, options = {}) {
         const url = `${this.SUPABASE_URL}/rest/v1/${endpoint}`;
 
+        let accessToken = null;
+        try {
+            accessToken = await this.getAccessToken();
+        } catch (error) {
+            console.error('Failed to obtain Supabase access token:', error);
+        }
+        if (!accessToken && !this.ALLOW_ANON_FALLBACK) {
+            throw new Error('No Supabase access token and anon fallback is disabled');
+        }
+
         const defaultHeaders = {
             'apikey': this.SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${this.SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${accessToken || this.SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         };

@@ -3,6 +3,11 @@
 const TnMStorage = {
     // Получить данные карточки для БЕЙДЖА (без истории)
     getCardDataForBadge: function(t) {
+        // Контекст Trello нужен, чтобы получить подписанный JWT для обмена на токен Supabase
+        // (см. PLAN_SECURITY.md). Регистрируем в каждом методе: точка входа зависит от того,
+        // из какого iframe'а пришёл вызов — доска, попап или card-back.
+        SupabaseAPI.useTrelloContext(t);
+
         return Promise.all([
             t.card('id'),
             t.board('id'),
@@ -24,6 +29,8 @@ const TnMStorage = {
 
     // Получить ПОЛНЫЕ данные карточки (с историей) для детального просмотра
     getCardData: function(t) {
+        SupabaseAPI.useTrelloContext(t);
+
         return Promise.all([
             t.card('id'),
             t.board('id'),
@@ -44,6 +51,8 @@ const TnMStorage = {
 
     // Добавить запись времени
     addTimeRecord: function(t, days, hours, minutes, description, workDate, memberId, memberName) {
+        SupabaseAPI.useTrelloContext(t);
+
         return Promise.all([
             t.board('id'),
             t.card('id')
@@ -82,6 +91,8 @@ const TnMStorage = {
 
     // Удалить запись времени
     deleteTimeRecord: function(t, recordId) {
+        SupabaseAPI.useTrelloContext(t);
+
         return Promise.all([
             t.board('id'),
             t.card('id')
@@ -92,6 +103,8 @@ const TnMStorage = {
 
     // Получить все данные для экспорта
     getAllCardDataForExport: function(t, startDate, endDate) {
+        SupabaseAPI.useTrelloContext(t);
+
         return t.board('id').then(function(board) {
             return Promise.all([
                 SupabaseAPI.getAllDataForExport(board.id, startDate, endDate),
@@ -107,6 +120,8 @@ const TnMStorage = {
 
     // Получить настройки доски
     getBoardSettings: function(t) {
+        SupabaseAPI.useTrelloContext(t);
+
         return t.board('id').then(function(board) {
             return SupabaseAPI.getBoardSettings(board.id);
         });
@@ -114,6 +129,8 @@ const TnMStorage = {
 
     // Обновить настройки доски
     updateBoardSettings: function(t, hoursPerDay) {
+        SupabaseAPI.useTrelloContext(t);
+
         return t.board('id').then(function(board) {
             return SupabaseAPI.updateBoardSettings(board.id, hoursPerDay);
         });

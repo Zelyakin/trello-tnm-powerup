@@ -183,6 +183,9 @@
 <script src="../js/storage.js"></script>
 <script>
     const t = TrelloPowerUp.iframe();
+    // Единственный view, который ходит в SupabaseAPI мимо TnMStorage, — регистрируем контекст
+    // здесь же (см. PLAN_SECURITY.md, Фаза 2).
+    SupabaseAPI.useTrelloContext(t);
     let currentPeriod = 'current-month';
 
     function showLoading() {

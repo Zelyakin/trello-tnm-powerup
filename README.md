@@ -126,14 +126,14 @@ The Power-Up uses Supabase for cloud storage:
 ```sql
 -- Boards table
 CREATE TABLE boards (
-  id SERIAL PRIMARY KEY,
-  trello_board_id UUID UNIQUE NOT NULL,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trello_board_id TEXT UNIQUE NOT NULL,   -- 24-char Trello board id (hex, NOT a UUID)
   created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Board settings table
 CREATE TABLE board_settings (
-  id SERIAL PRIMARY KEY,
+  id SERIAL PRIMARY KEY,                  -- the only sequence-backed PK in the schema
   board_id UUID REFERENCES boards(id) UNIQUE NOT NULL,
   hours_per_day INTEGER DEFAULT 8 CHECK (hours_per_day IN (8, 24)),
   created_at TIMESTAMP DEFAULT NOW(),
@@ -142,23 +142,22 @@ CREATE TABLE board_settings (
 
 -- Cards table with aggregated time in minutes
 CREATE TABLE cards (
-  id SERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   trello_card_id TEXT UNIQUE NOT NULL,
   board_id UUID REFERENCES boards(id),
   time_minutes INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Time entries table with minutes-based storage
 CREATE TABLE time_entries (
-  id SERIAL PRIMARY KEY,
-  card_id INTEGER REFERENCES cards(id),
-  trello_member_id TEXT,
-  member_name TEXT,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id UUID REFERENCES cards(id),
+  trello_member_id TEXT NOT NULL,
+  member_name TEXT NOT NULL,
   time_minutes INTEGER DEFAULT 0,
-  description TEXT,
-  work_date DATE,
+  description TEXT DEFAULT '',
+  work_date DATE NOT NULL,
   trello_entry_id BIGINT,
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(card_id, trello_entry_id)
