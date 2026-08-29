@@ -1,0 +1,8 @@
+# Конфигурация Supabase CLI.
+# project_id — локальное имя проекта для CLI (не ref в облаке; ref задаётся supabase link).
+project_id = "trello-tnm-powerup"
+
+[functions.trello-auth]
+# На входе у клиента есть только JWT от Trello — супабейсовского токена он в этот момент ещё
+# не имеет. При verify_jwt = true гейт платформы отбил бы запрос до нашего кода.
+verify_jwt = false
