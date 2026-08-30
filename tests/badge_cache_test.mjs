@@ -14,6 +14,13 @@ function load(board) {
     const state = { board };
 
     const fetchImpl = async (url) => {
+        // Обмен токена: считаем его отдельно от запросов к данным, иначе он смазывал бы
+        // счётчик, ради которого тест и написан.
+        if (String(url).includes('/functions/v1/trello-auth')) {
+            return { ok: true, status: 200,
+                     json: async () => ({ token: 'test-token',
+                                          expiresAt: Math.floor(Date.now() / 1000) + 3600 }) };
+        }
         stats.requests.push(String(url));
         const rows = Object.entries(state.board)
             .filter(([, m]) => m > 0)
@@ -28,6 +35,8 @@ function load(board) {
     vm.runInContext(SRC + '\n;globalThis.__api = SupabaseAPI;', ctx);
 
     const api = ctx.__api;
+    // Без контекста Trello request() падает: фолбэка на anon-ключ больше нет.
+    api.useTrelloContext({ jwt: async () => 'trello.jwt.here' });
     // Board id резолвится тем же mock-фетчем; кладём готовым, чтобы не считать лишний запрос.
     api._boardIdCache.set('board_B', { boardId: 'uuid-B', timestamp: Date.now() });
     return { api, stats, state };

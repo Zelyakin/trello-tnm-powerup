@@ -430,11 +430,52 @@ The Power-Up is hosted on **Cloudflare Pages** at `https://trello-tnm-powerup.pa
 
 ### Supabase Configuration
 
-Credentials in `js/supabase-api.js`:
 ```javascript
 SUPABASE_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co'
-SUPABASE_ANON_KEY: 'eyJhbGci...' // Anon key (safe for client-side)
+SUPABASE_ANON_KEY: 'eyJhbGci...'  // gateway pass only — grants NO data access
+AUTH_FUNCTION_URL: '.../functions/v1/trello-auth'
 ```
+
+### Authorization (v3.6) — the anon key no longer grants anything
+
+Until v3.6 the client authenticated with the static anon key. It proves "I am a client of this
+project" but says nothing about **which board the Power-Up is open on** — and since the client
+writes its own PostgREST filters, `board_id=eq.<someone-else's>` was indistinguishable from its
+own. Every board's data was readable and writable by any user of the Power-Up.
+
+The fix uses the fact that **Trello already is the identity provider**. `t.jwt()` returns a JWT
+signed by Trello (RS256) carrying `idPlugin` / `idBoard` / `idMember`; it cannot be forged from
+devtools. All that was missing was a server-side point to verify it:
+
+```
+iframe: t.jwt() → POST /functions/v1/trello-auth   (Edge Function, verify_jwt=false)
+                    ├ verifies the RS256 signature against api.trello.com/1/resource/jwt-public-keys
+                    │   (cached 4h, keys tried in turn so key rotation doesn't break anything)
+                    ├ checks idPlugin against the prod/dev allowlist
+                    └ mints a 1h HS256 token: { role:'authenticated', trello_board_id, ... }
+
+iframe: every PostgREST call carries that token (hot path stays direct — no proxy, no extra hop)
+RLS:    board_id = current_board_id(), reading auth.jwt()->>'trello_board_id'
+```
+
+Rules for anyone touching this:
+
+- **`useTrelloContext(t)` must be called once per JS context.** Popups, card-back and the board
+  iframe are separate contexts. It lives in the seven `TnMStorage` methods ([js/storage.js](js/storage.js))
+  plus [views/board-stats.html](views/board-stats.html) — the only view that calls `SupabaseAPI`
+  directly. A new view calling the API directly must register the context itself, or every request
+  from it will throw.
+- **There is no anon fallback.** `request()` throws when no token can be obtained. A fallback
+  existed during the rollout and was removed with step 7: after the cutover anon returns 401, so
+  falling back to it would render zeroed badges and empty stats instead of a visible error.
+- **`sub` is a 24-char Trello member id, not a UUID** — so `auth.uid()` must never be used in
+  policies (it casts to uuid and fails). Use `auth.jwt()->>'…'`.
+- **Policies exist only for the `authenticated` role**; `anon` has neither policies nor grants.
+- Token cache is per context, refreshed 5 min before `exp`, with promise dedup — the ~270 badge
+  callbacks of a large board trigger **one** exchange.
+- SQL lives in [supabase/sql/](supabase/sql/): `01` policies (idempotent, transactional),
+  `02` the anon cutover, `99` rollback. Tests: `deno run -A tests/rls_live_test.ts <board_id>`,
+  `node tests/client_auth_test.mjs`, `deno run -A supabase/functions/trello-auth/smoke.ts`.
 
 ## Performance Notes
 

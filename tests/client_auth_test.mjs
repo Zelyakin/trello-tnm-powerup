@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const SRC = readFileSync(new URL('../js/supabase-api.js', import.meta.url), 'utf8');
 const ANON_PREFIX = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
 
-function load({ jwt, mintStatus = 200, allowFallback = true } = {}) {
+function load({ jwt, mintStatus = 200 } = {}) {
     const stats = { mints: 0, restCalls: [], jwtCalls: 0 };
 
     const fetchImpl = async (url, config) => {
@@ -31,7 +31,6 @@ function load({ jwt, mintStatus = 200, allowFallback = true } = {}) {
     vm.runInContext(SRC + '\n;globalThis.__api = SupabaseAPI;', ctx);
 
     const api = ctx.__api;
-    api.ALLOW_ANON_FALLBACK = allowFallback;
     if (jwt !== null) {
         api.useTrelloContext({ jwt: async () => { stats.jwtCalls++; return 'trello.jwt.here'; } });
     }
@@ -81,29 +80,33 @@ const check = (name, ok, detail = '') => {
         stats.restCalls[1].auth === 'Bearer minted-2', stats.restCalls[1].auth);
 }
 
-// 5. Функция обмена упала → фолбэк на anon-ключ (фича-флаг включён).
+// 5. Функция обмена упала → запрос падает, а НЕ уходит с anon-ключом.
+// До 02_cutover здесь был фолбэк на anon; после отсечения он давал бы 401 на каждый запрос,
+// то есть бейджи с нулями вместо видимой ошибки.
 {
     const { api, stats } = load({ mintStatus: 500 });
-    await api.request('cards?select=id');
-    check('обмен упал → фолбэк на anon',
-        stats.restCalls[0].auth.startsWith('Bearer ' + ANON_PREFIX), stats.restCalls[0].auth.slice(0, 45));
-}
-
-// 6. Контекст не зарегистрирован → тоже фолбэк, без обращения к функции.
-{
-    const { api, stats } = load({ jwt: null });
-    await api.request('cards?select=id');
-    check('нет контекста → фолбэк без обмена',
-        stats.mints === 0 && stats.restCalls[0].auth.startsWith('Bearer ' + ANON_PREFIX));
-}
-
-// 7. Фича-флаг выключен и обмен упал → запрос падает, а не идёт с anon-ключом.
-{
-    const { api, stats } = load({ mintStatus: 500, allowFallback: false });
     let threw = false;
     try { await api.request('cards?select=id'); } catch { threw = true; }
-    check('без фолбэка: запрос падает, а не уходит с anon',
+    check('обмен упал → запрос падает, anon не подставляется',
         threw && stats.restCalls.length === 0, `threw=${threw} rest=${stats.restCalls.length}`);
+}
+
+// 6. Контекст не зарегистрирован → тоже падаем, к функции обмена даже не идём.
+{
+    const { api, stats } = load({ jwt: null });
+    let threw = false;
+    try { await api.request('cards?select=id'); } catch { threw = true; }
+    check('нет контекста → запрос падает без обращения к функции',
+        threw && stats.mints === 0 && stats.restCalls.length === 0,
+        `threw=${threw} mints=${stats.mints}`);
+}
+
+// 7. Ни один запрос ни в одном сценарии не должен уходить с anon-ключом в Authorization.
+{
+    const { api, stats } = load();
+    await api.request('cards?select=id');
+    const anyAnon = stats.restCalls.some(c => c.auth.startsWith('Bearer ' + ANON_PREFIX));
+    check('anon-ключ никогда не идёт в Authorization', !anyAnon);
 }
 
 console.log(fails === 0 ? '\nВСЕ ПРОВЕРКИ ПРОЙДЕНЫ' : `\nПРОВАЛЕНО: ${fails}`);
