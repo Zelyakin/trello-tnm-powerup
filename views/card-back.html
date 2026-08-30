@@ -132,6 +132,9 @@
             t.popup({
                 title: 'Time Tracking',
                 url: t.signUrl('./card-detail.html'),
+                // Ссылка называется "View full information" и стоит под обрезанным списком —
+                // открывать на форме добавления времени было бы обманом ожидания.
+                args: { tab: 'history' },
                 height: 400,
                 // Обязательно для popup'а, открываемого ИЗ iframe: без mouseEvent Trello не
                 // знает, к чему привязать всплывашку, и отказывает — "Context missing target
