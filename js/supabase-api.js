@@ -9,10 +9,6 @@ const SupabaseAPI = {
     // заголовком apikey («пропуск на порог» PostgREST) и сам по себе прав не даёт.
     AUTH_FUNCTION_URL: 'https://tpzbvdyxmzqweoghtgzp.supabase.co/functions/v1/trello-auth',
 
-    // Фича-флаг на время выката: если обмен не удался, продолжаем работать на anon-ключе.
-    // УБРАТЬ после Фазы 4 плана — иначе он навсегда останется обходом всей схемы.
-    ALLOW_ANON_FALLBACK: true,
-
     TOKEN_REFRESH_SKEW_MS: 5 * 60 * 1000, // обновляем токен за 5 минут до истечения
 
     _trelloContext: null,      // t текущего iframe — единственный источник Trello JWT
@@ -89,19 +85,18 @@ const SupabaseAPI = {
     async request(endpoint, options = {}) {
         const url = `${this.SUPABASE_URL}/rest/v1/${endpoint}`;
 
-        let accessToken = null;
-        try {
-            accessToken = await this.getAccessToken();
-        } catch (error) {
-            console.error('Failed to obtain Supabase access token:', error);
-        }
-        if (!accessToken && !this.ALLOW_ANON_FALLBACK) {
-            throw new Error('No Supabase access token and anon fallback is disabled');
+        // Токен обязателен. Фолбэк на anon-ключ был нужен только на время выката: после
+        // 02_cutover anon прав не даёт, и подстановка его в Authorization дала бы 401 в ответ
+        // на каждый запрос — то есть бейджи с нулями и пустую статистику вместо внятной
+        // ошибки. Тихий отказ здесь хуже громкого, поэтому падаем.
+        const accessToken = await this.getAccessToken();
+        if (!accessToken) {
+            throw new Error('No Supabase access token: Trello context is not registered');
         }
 
         const defaultHeaders = {
-            'apikey': this.SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${accessToken || this.SUPABASE_ANON_KEY}`,
+            'apikey': this.SUPABASE_ANON_KEY, // пропуск на порог PostgREST, прав не даёт
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         };

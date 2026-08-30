@@ -327,15 +327,31 @@
   }
 
   // Tab management
+  // Внутри используем el, а не t: t — это контекст Trello, и затенять его здесь опасно.
+  function activateTab(name) {
+    const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+    const content = document.getElementById(name + '-tab');
+    if (!tab || !content) return;
+
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    tab.classList.add('active');
+    content.classList.add('active');
+  }
+
   document.querySelectorAll('.tab').forEach(function(tab) {
     tab.addEventListener('click', function() {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      tab.classList.add('active');
-      document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+      activateTab(tab.dataset.tab);
     });
   });
+
+  // Какую вкладку открыть изначально, решает вызывающая сторона. Из card-back попап
+  // открывают ссылкой "View full information" — там ждут историю, а не форму добавления.
+  // Значение приходит через args у t.popup() и читается синхронно.
+  const initialTab = t.arg('tab');
+  if (initialTab) {
+    activateTab(initialTab);
+  }
 
   // Save time
   document.getElementById('save-time').addEventListener('click', function() {

@@ -117,16 +117,32 @@
     // Handler for opening detailed information
     function setupDetailLink() {
         const detailLink = document.getElementById('open-details');
-        if (detailLink) {
-            detailLink.addEventListener('click', function(e) {
-                e.preventDefault();
-                t.popup({
-                    title: 'Time Tracking',
-                    url: t.signUrl('./card-detail.html'),
-                    height: 400
-                });
+        if (!detailLink) return;
+
+        // Вешаем обработчик ровно один раз: setupDetailLink() зовётся и на DOMContentLoaded,
+        // и на каждый t.render(), а ссылка лежит в статической разметке и не пересоздаётся —
+        // без этой отметки слушатели копились бы с каждым рендером (в консоли это выглядело
+        // как задвоенные ошибки на один клик). Флаг на самом элементе, а не в переменной:
+        // если разметку когда-нибудь начнут перестраивать, новый элемент привяжется заново.
+        if (detailLink.dataset.tnmBound) return;
+        detailLink.dataset.tnmBound = '1';
+
+        detailLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            t.popup({
+                title: 'Time Tracking',
+                url: t.signUrl('./card-detail.html'),
+                // Ссылка называется "View full information" и стоит под обрезанным списком —
+                // открывать на форме добавления времени было бы обманом ожидания.
+                args: { tab: 'history' },
+                height: 400,
+                // Обязательно для popup'а, открываемого ИЗ iframe: без mouseEvent Trello не
+                // знает, к чему привязать всплывашку, и отказывает — "Context missing target
+                // element or a mouseEvent was not provided". В client.js это не нужно: там
+                // capability-обработчики, и позицию кнопки Trello знает сам.
+                mouseEvent: e
             });
-        }
+        });
     }
 
     // Load data with protection from simultaneous calls

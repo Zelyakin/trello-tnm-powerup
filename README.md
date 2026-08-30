@@ -270,6 +270,11 @@ SUPABASE_URL: 'your-project-url',
 SUPABASE_ANON_KEY: 'your-anon-key'
 ```
 
+4. Deploy the `trello-auth` Edge Function and apply the RLS policies — see
+   [supabase/README.md](supabase/README.md). **This step is not optional:** since v3.6 the anon
+   key alone grants no access to data, and the Power-Up authenticates with a short-lived token
+   that is scoped to the board it is open on. Without the function every request fails.
+
 ### Trello REST API
 
 Required only for resolving names of **archived/deleted** cards in the CSV export
