@@ -9,7 +9,7 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 - 👥 Select user on behalf of whom time will be added (current user by default)
 - 📝 History of all entries with user and date indication
 - 🗑️ Ability to delete time entries from history
-- 📊 Export time tracking data to CSV file with date filtering
+- 📊 Export time tracking data to CSV file with date filtering, including each card's labels
 - ☁️ Cloud storage via Supabase for reliable data persistence
 - 🏷️ Display badges with time spent on cards
 - 📋 Display time summary on the back of the card
@@ -46,20 +46,24 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 3. Optionally disable the "Include cards without time tracking data" option
 4. Click the "Export to CSV" button
 5. The CSV file will be automatically downloaded to your computer
-6. File format: "date","task","user","time spent","time spent (minutes)","work description"
+6. File format: "date","task","labels","user","time spent","time spent (minutes)","work description"
 7. The "time spent (minutes)" column contains total time converted to minutes for easy processing in Excel
+8. The "labels" column lists the card's Trello labels, separated by `; `. A label with no name is
+   shown as its color in parentheses (e.g. `(green)`). Labels reflect the card's **current** state,
+   not the state at the time the entry was logged — they are read live from Trello, not stored with
+   the time entry
 
 **Archived & deleted cards.** Time logged on a card stays in the export even after the card
 is archived or deleted from the board. Trello's Power-Up client (`t.cards('all')`) does not
 return such cards, so their names are resolved on demand via the Trello REST API:
 
-- **Archived** card → shown as `[archived] <name>`
-- **Deleted** card → shown as `[deleted] <cardId>` (Trello no longer has a name for it)
-- A card **moved to another board** still resolves to its plain `<name>` (no prefix)
+- **Archived** card → shown as `[archived] <name>`, labels included
+- **Deleted** card → shown as `[deleted] <cardId>` (Trello no longer has a name or labels for it)
+- A card **moved to another board** still resolves to its plain `<name>` (no prefix), labels included
 
 Name resolution is **opt-in**: tick "Resolve names of archived/deleted cards" in the export form.
 When it is off (the default), the export never contacts Trello's REST API and off-board cards
-export as `Card <id>`. When it is on and the export contains off-board cards, the person exporting
+export as `Card <id>` with an empty "labels" cell. When it is on and the export contains off-board cards, the person exporting
 is asked once to grant **read-only** access to Trello — Trello grants this at the account level
 (there is no per-board scope), and the token expires after 30 days. If they decline, the export
 still completes with the `Card <id>` fallback. Trello's client library stores the token itself —
@@ -394,7 +398,30 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 3.5 (Current) - Constant-Cost Board Loading
+### Version 3.7 (Current) - Labels in Export
+
+**New features:**
+- ✅ **Card labels in the CSV export**: a new "labels" column (right after "task") lists the card's Trello labels, separated by `; `. A label with no name is shown as its color, e.g. `(green)`
+- ✅ Works for archived and moved cards too, under the existing opt-in "Resolve names of archived cards" toggle; deleted cards have no labels left in Trello
+
+**Notes:**
+- No database or schema changes: labels are read live from Trello and cost **zero** extra requests — on-board cards already carry them in the board data the export loads anyway, off-board cards get them in the REST call that was already being made
+- Labels reflect the card's **current** state, not the state on the date the time was logged — there is no label history in the database
+- The new column is inserted in the middle of the row, so spreadsheets/scripts keyed to fixed column positions need a one-off adjustment
+
+### Version 3.6 - Board-Scoped Authorization
+
+**Security:**
+- ✅ **The public Supabase key no longer grants access to any data**: until 3.6 the Power-Up authenticated with the static anon key alone. That key proves "I am a client of this project", but says nothing about **which board** the Power-Up is open on — and since the client builds its own query filters, another board's `board_id` was indistinguishable from its own. In practice every board's data was readable and writable by any user of the Power-Up
+- ✅ **Trello is now the identity provider**: the Power-Up exchanges the JWT that Trello signs for the current board (`t.jwt()`) for a short-lived Supabase token, via the `trello-auth` Edge Function. The function verifies the RS256 signature against Trello's published public keys, checks the Power-Up id against an allowlist, and mints a 1-hour token carrying the board id
+- ✅ **Row-level security does the cutting**: every query is filtered server-side by `board_id` taken from that token, so a request can only ever touch the board the Power-Up is actually open on. Policies exist only for the authenticated role — the `anon` role was left with neither policies nor grants, and a plain `curl` with the public key now answers **401** instead of returning another board's time entries
+
+**Notes:**
+- No database migration and no visible change for users: same badges, same 60-second freshness. The token is cached per iframe, refreshed 5 minutes before it expires and deduplicated across parallel calls, so even a 270-card board performs a single exchange
+- **Self-hosting now requires one extra setup step**: deploy the Edge Function and apply the SQL policies — see [supabase/README.md](supabase/README.md). Without them every request fails, since the anon key alone no longer opens anything
+- Old browser tabs left open across the cutover keep running the pre-3.6 code and see empty data until refreshed (RLS returns no rows rather than an error). A page reload fixes it
+
+### Version 3.5 - Constant-Cost Board Loading
 
 **Improvements:**
 - ✅ **Badges now cost one request per board instead of one per card**: opening a board loads every card's total in a single query, so a 270-card board is as cheap as a 5-card one (measured: ~264 KB → ~4 KB of traffic, 3 requests total regardless of board size)

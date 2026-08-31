@@ -16,6 +16,7 @@ This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses S
 - Advanced caching with race condition protection (v3.1)
 - Archived/deleted card names in CSV export via Trello REST — opt-in, read-only (v3.3)
 - Timezone-correct calendar dates: `work_date` never shifts by a day for users west of UTC (v3.4)
+- Card labels in CSV export — read live from Trello, zero extra requests (v3.7)
 
 ## Architecture
 
@@ -355,7 +356,8 @@ The same embedded-JOIN pattern is used in `getAllDataForExport()` (with a parall
 ### 9. Off-board Card Name Resolution in Export (Trello REST)
 
 The CSV export ([views/export-time.html](views/export-time.html)) needs a human-readable name
-per card, but Supabase only stores `trello_card_id` — names come live from Trello. The client
+(and, since v3.7, the card's labels) per card, but Supabase only stores `trello_card_id` — both
+come live from Trello. The client
 method `t.cards('all')` returns **only open cards on the board**; archived and deleted cards
 are absent, so historically they exported as `Card <id>`.
 
@@ -377,10 +379,25 @@ Fix (this is the **only** place the Power-Up touches the Trello REST API):
   blocker. The `read` scope is account-wide (no per-board option); token stored by Trello's client
   lib (member-private), never by us. When the prompt shows, the filter form is hidden so it is not
   pushed below the fold.
-- Per off-board id: `GET /1/cards/{id}?fields=name,closed&key&token` →
+- Per off-board id: `GET /1/cards/{id}?fields=name,closed,labels&key&token` →
   `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
   board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`
   fallback (export never breaks). Status is encoded as a name prefix — no separate CSV column.
+  `resolveOffBoardCards()` returns `id → { name, labels }`; the fallbacks carry `labels: []`, so a
+  degraded path yields an empty "Labels" cell rather than a broken export.
+
+**Labels column (v3.7)**: the `Labels` CSV column costs **zero** extra requests — for on-board cards
+the labels are already in the `t.cards('all')` response (the code simply reads `card.labels` now),
+and for off-board cards they ride along in the REST call that was already being made. Nothing is
+stored in Supabase. Consequences to keep in mind:
+- Labels are the card's **current** state, not a snapshot at `work_date` — `time_entries` has no
+  label history, and adding one would mean a schema change plus a write on every entry.
+- A label with no name is rendered as its color, `(green)`; a label with neither name nor color is
+  skipped (`formatLabels()`).
+- Labels for archived/deleted cards follow the same opt-in gate as names: no checkbox → empty cell.
+  A deleted card never has labels (404).
+- `card.labels` is read defensively (`Array.isArray`) — if Trello ever stops returning the field
+  from `t.cards('all')`, the column degrades to empty instead of throwing.
 
 ### 10. Date & Timezone Handling (v3.4)
 
