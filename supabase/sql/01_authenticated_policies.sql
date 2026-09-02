@@ -84,7 +84,8 @@ create policy tnm_cards_update on public.cards
   with check (board_id = (select public.current_board_id()));
 
 -- time_entries: принадлежность доске проверяется через карточку. SELECT/INSERT/DELETE.
--- UPDATE не нужен — записи только добавляются и удаляются.
+-- UPDATE вынесен в отдельный 03_time_entries_update.sql (появился вместе с редактированием
+-- записей в v3.8) — этот файл намеренно оставлен таким, каким его применили при выкате.
 drop policy if exists tnm_time_entries_select on public.time_entries;
 create policy tnm_time_entries_select on public.time_entries
   for select to authenticated

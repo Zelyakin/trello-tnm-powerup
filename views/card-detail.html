@@ -22,6 +22,37 @@
       background-color: var(--tnm-bg-danger-soft);
     }
 
+    .edit-record {
+      color: var(--tnm-text-accent);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background-color: transparent;
+      border: 1px solid var(--tnm-text-accent);
+    }
+
+    .edit-record:hover {
+      background-color: var(--tnm-bg-button-secondary);
+    }
+
+    /* Баннер режима редактирования: форма одна на добавление и на правку,
+       поэтому нужен явный признак, что Save перезапишет существующую запись. */
+    .edit-banner {
+      display: none;
+      margin-bottom: 12px;
+      padding: 8px;
+      font-size: 12px;
+      color: var(--tnm-text-secondary);
+      background-color: var(--tnm-bg-secondary);
+      border-left: 3px solid var(--tnm-text-accent);
+      border-radius: 3px;
+    }
+
+    #cancel-edit {
+      margin-left: 8px;
+    }
+
     .history-item {
       position: relative;
     }
@@ -104,7 +135,8 @@
   </div>
 
   <div class="tab-content active" id="time-tab">
-    <h3>Add Time</h3>
+    <h3 id="form-heading">Add Time</h3>
+    <div class="edit-banner" id="edit-banner"></div>
     <div class="form-group">
       <label for="member-select">User:</label>
       <select id="member-select">
@@ -126,6 +158,7 @@
       <textarea id="time-description" placeholder="Description of work done"></textarea>
     </div>
     <button class="mod-primary" id="save-time">Save</button>
+    <button class="cancel-btn" id="cancel-edit" style="display: none;">Cancel</button>
 
     <div class="summary" id="time-summary">
       <!-- Total time will be displayed here -->
@@ -134,7 +167,7 @@
 
   <div class="tab-content" id="history-tab">
     <div class="history-list" id="history-list">
-      <!-- Record history with delete buttons will be here -->
+      <!-- Record history with edit/delete buttons will be here -->
     </div>
   </div>
 </div>
@@ -156,6 +189,13 @@
 <script>
   const t = TrelloPowerUp.iframe();
   let currentRecordToDelete = null;
+
+  // Режим редактирования: id правимой записи (null — обычное добавление).
+  let editingRecordId = null;
+  // Настройка доски и последняя загруженная история — нужны, чтобы заполнить форму
+  // при клике на Edit, не ходя за данными повторно.
+  let currentHoursPerDay = 8;
+  const recordsById = new Map();
 
   // Флаг для предотвращения множественных одновременных загрузок
   let isLoading = false;
@@ -249,6 +289,8 @@
     try {
       const data = await TnMStorage.getCardData(t);
       const hoursPerDay = data.hoursPerDay || 8;
+      currentHoursPerDay = hoursPerDay;
+      recordsById.clear();
 
       document.getElementById('time-summary').innerHTML =
               `<p>Total time spent: <strong>${TnMStorage.formatTime(data.timeMinutes || 0, hoursPerDay)}</strong></p>`;
@@ -265,6 +307,7 @@
             item.className = 'history-item';
             const recordId = record.id || record.date || record.created_at;
             item.dataset.recordId = recordId;
+            recordsById.set(recordId, record);
 
             const displayDate = record.workDate ? formatDate(record.workDate) : formatDate(record.date || record.created_at);
             const timeStr = TnMStorage.formatTime(record.timeMinutes || 0, hoursPerDay);
@@ -276,12 +319,19 @@
                 <strong>${timeStr}</strong> - ${record.memberName || 'User'}: ${record.description || 'No description'}
               </div>
               <div class="history-actions">
+                <button class="edit-record" data-record-id="${recordId}">Edit</button>
                 <button class="delete-record" data-record-id="${recordId}">Delete</button>
               </div>
             `;
 
             historyList.appendChild(item);
           }
+        });
+
+        document.querySelectorAll('.edit-record').forEach(function(button) {
+          button.addEventListener('click', function() {
+            startEdit(this.dataset.recordId);
+          });
         });
 
         document.querySelectorAll('.delete-record').forEach(function(button) {
@@ -293,12 +343,97 @@
       } else {
         historyList.innerHTML = '<p>History is empty</p>';
       }
+
+      // Правимую запись могли удалить из другой вкладки (или из этой же — кнопкой Delete):
+      // держать форму в режиме правки исчезнувшей строки нельзя, Save упал бы с ошибкой.
+      if (editingRecordId && !recordsById.has(editingRecordId)) {
+        exitEditMode();
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       document.getElementById('time-summary').innerHTML = '<p>Error loading data</p>';
     } finally {
       isLoading = false;
     }
+  }
+
+  // Выбрать участника в селекте по его trello id. Автор записи мог покинуть доску — тогда
+  // его нет среди опций, и без временной опции правка описания молча переписала бы автора
+  // на текущего пользователя.
+  function selectMember(memberId, memberName) {
+    const select = document.getElementById('member-select');
+
+    const match = Array.from(select.options).find(function(option) {
+      try {
+        return JSON.parse(option.value).id === memberId;
+      } catch (e) {
+        return false; // служебные опции "loading"/"error" — не JSON
+      }
+    });
+
+    if (match) {
+      select.value = match.value;
+      return;
+    }
+
+    const option = document.createElement('option');
+    option.value = JSON.stringify({ id: memberId, name: memberName });
+    option.text = memberName ? `${memberName} (not on the board)` : 'Unknown user';
+    option.dataset.ghost = 'true'; // убирается при выходе из режима правки
+    select.appendChild(option);
+    select.value = option.value;
+  }
+
+  // Перевести форму в режим правки существующей записи.
+  function startEdit(recordId) {
+    const record = recordsById.get(recordId);
+    if (!record) return;
+
+    editingRecordId = recordId;
+
+    // work_date уже в формате "YYYY-MM-DD" — ровно то, что ждёт input[type=date].
+    // Через new Date() его прогонять нельзя: это сдвинуло бы день западнее UTC.
+    document.getElementById('work-date').value = record.workDate || '';
+    // formatTime и parseTimeString — обратимая пара, поле заполняется в том же формате,
+    // в котором его вводит пользователь.
+    document.getElementById('time-input').value =
+            TnMStorage.formatTime(record.timeMinutes || 0, currentHoursPerDay);
+    document.getElementById('time-description').value = record.description || '';
+    selectMember(record.memberId, record.memberName);
+
+    document.getElementById('time-error').style.display = 'none';
+    document.getElementById('form-heading').textContent = 'Edit Entry';
+
+    const banner = document.getElementById('edit-banner');
+    banner.textContent = `Editing the entry added ${formatDate(record.date)} — saving overwrites it.`;
+    banner.style.display = 'block';
+
+    document.getElementById('save-time').textContent = 'Save changes';
+    document.getElementById('cancel-edit').style.display = 'inline-block';
+
+    activateTab('time');
+  }
+
+  // Вернуть форму в обычный режим добавления.
+  function exitEditMode() {
+    editingRecordId = null;
+
+    document.getElementById('time-input').value = '';
+    document.getElementById('time-description').value = '';
+    document.getElementById('time-error').style.display = 'none';
+    initDateField();
+
+    const select = document.getElementById('member-select');
+    Array.from(select.options)
+            .filter(function(option) { return option.dataset.ghost === 'true'; })
+            .forEach(function(option) { option.remove(); });
+    // Первая опция — текущий пользователь: loadBoardMembers() сортирует его наверх.
+    select.selectedIndex = 0;
+
+    document.getElementById('form-heading').textContent = 'Add Time';
+    document.getElementById('edit-banner').style.display = 'none';
+    document.getElementById('save-time').textContent = 'Save';
+    document.getElementById('cancel-edit').style.display = 'none';
   }
 
   function showDeleteConfirmation(recordId) {
@@ -392,6 +527,46 @@
       return;
     }
 
+    const saveButton = this;
+    saveButton.disabled = true;
+
+    // Правка существующей записи. В отличие от добавления, попап НЕ закрываем: результат
+    // нужно показать в истории, иначе непонятно, применилось ли изменение.
+    if (editingRecordId) {
+      TnMStorage.updateTimeRecord(
+              t,
+              editingRecordId,
+              time.days,
+              time.hours,
+              time.minutes,
+              description,
+              workDate.toISOString(),
+              selectedMember.id,
+              selectedMember.name
+      )
+              .then(function() {
+                exitEditMode();
+                activateTab('history');
+                return loadData();
+              })
+              .then(function() {
+                // Бейдж на доске — другой iframe: инвалидация кеша туда не доходит, метку
+                // читает getCardDataForBadge. Без неё бейдж провисел бы старым до конца TTL.
+                return t.set('card', 'shared', 'tnm-lastUpdate', Date.now());
+              })
+              .catch(function(error) {
+                console.error('Error updating time entry:', error);
+                alert('Error updating entry: ' + error.message);
+                // Запись могли удалить, пока попап был открыт: перечитываем историю —
+                // loadData() сам выведет форму из режима правки, если строки уже нет.
+                loadData();
+              })
+              .then(function() {
+                saveButton.disabled = false;
+              });
+      return;
+    }
+
     TnMStorage.addTimeRecord(
             t,
             time.days,
@@ -423,7 +598,12 @@
             .catch(function(error) {
               console.error('Error saving time:', error);
               alert('Error saving time: ' + error.message);
+              saveButton.disabled = false;
             });
+  });
+
+  document.getElementById('cancel-edit').addEventListener('click', function() {
+    exitEditMode();
   });
 
   // Handlers for confirmation dialog

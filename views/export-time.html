@@ -260,6 +260,21 @@
         return s.replace(/"/g, '""');
     }
 
+    // Лейблы карточки → строка для CSV. Безымянный лейбл (только цвет) выводим как "(green)",
+    // совсем пустой (ни имени, ни цвета) пропускаем. labels приходит из t.cards()/REST;
+    // если поля вдруг нет — отдаём пустую ячейку, экспорт не ломаем.
+    function formatLabels(labels) {
+        if (!Array.isArray(labels)) return '';
+        return labels
+            .map(function(label) {
+                const name = ((label && label.name) || '').trim();
+                if (name) return name;
+                return (label && label.color) ? `(${label.color})` : '';
+            })
+            .filter(Boolean)
+            .join('; ');
+    }
+
     // Показать/скрыть промпт авторизации. При показе прячем форму фильтра и прогресс,
     // чтобы промпт был единственным контентом наверху (иначе он уезжал под фолд).
     function showAuthPrompt() {
@@ -321,6 +336,7 @@
             // t.cards('all') НЕ возвращает архивные/удалённые карточки — только открытые на доске.
             const allCards = await t.cards('all');
             const onBoardIds = new Set(allCards.map(c => c.id));
+            addDebugInfo(`Cards on board: ${allCards.length}, of them with labels field: ${allCards.filter(c => Array.isArray(c.labels)).length}`);
 
             // Карточки, которые реально попадут в выгрузку, но которых нет на доске
             // (архивные или удалённые) — их имена придётся доставать через REST.
@@ -350,8 +366,8 @@
             }
 
             if (authorized) {
-                const nameMap = await resolveOffBoardNames(restApi, offBoardIds);
-                await finishExport(nameMap);
+                const offBoardInfo = await resolveOffBoardCards(restApi, offBoardIds);
+                await finishExport(offBoardInfo);
             } else {
                 // authorize() должен вызываться прямым кликом пользователя, иначе браузер
                 // заблокирует попап авторизации — поэтому показываем промпт с кнопкой.
@@ -383,8 +399,8 @@
         }
 
         try {
-            const nameMap = await resolveOffBoardNames(restApi, pendingExport.offBoardIds);
-            await finishExport(nameMap);
+            const offBoardInfo = await resolveOffBoardCards(restApi, pendingExport.offBoardIds);
+            await finishExport(offBoardInfo);
         } catch (error) {
             console.error('Error resolving card names:', error);
             showError('Error resolving card names: ' + error.message);
@@ -397,10 +413,10 @@
         await finishExport({});
     }
 
-    // Достаём имена/статусы off-board карточек через Trello REST (по одному id).
+    // Достаём имена/статусы/лейблы off-board карточек через Trello REST (по одному id).
     // 200 + closed:true → архивная; 200 + closed:false → открыта (напр. перенесена
-    // на другую доску); 404 → удалена.
-    async function resolveOffBoardNames(restApi, ids) {
+    // на другую доску); 404 → удалена (лейблов уже нет). Возвращаем id → { name, labels }.
+    async function resolveOffBoardCards(restApi, ids) {
         const token = await restApi.getToken();
         const map = {};
         const progressStatus = document.getElementById('progress-status');
@@ -411,47 +427,54 @@
             progressStatus.textContent = `Resolving archived names ${i + 1}/${ids.length}...`;
             try {
                 const res = await fetch(
-                    `https://api.trello.com/1/cards/${id}?fields=name,closed&key=${TRELLO_API_KEY}&token=${token}`
+                    `https://api.trello.com/1/cards/${id}?fields=name,closed,labels&key=${TRELLO_API_KEY}&token=${token}`
                 );
                 if (res.status === 404) {
-                    // Карточка удалена — имени в Trello уже нет, показываем id.
-                    map[id] = `[deleted] ${id}`;
+                    // Карточка удалена — ни имени, ни лейблов в Trello уже нет, показываем id.
+                    map[id] = { name: `[deleted] ${id}`, labels: [] };
                 } else if (res.ok) {
                     const card = await res.json();
-                    map[id] = card.closed ? `[archived] ${card.name}` : card.name;
+                    map[id] = {
+                        name: card.closed ? `[archived] ${card.name}` : card.name,
+                        labels: card.labels
+                    };
                 } else {
                     // 401 / прочее — деградируем на legacy-фолбэк.
                     addDebugInfo(`REST ${res.status} for card ${id}`);
-                    map[id] = `Card ${id}`;
+                    map[id] = { name: `Card ${id}`, labels: [] };
                 }
             } catch (e) {
                 addDebugInfo(`REST error for card ${id}: ${e && e.message}`);
-                map[id] = `Card ${id}`;
+                map[id] = { name: `Card ${id}`, labels: [] };
             }
         }
         return map;
     }
 
-    // Финальная сборка CSV и скачивание. offBoardNameMap: trello_card_id → готовое имя.
-    async function finishExport(offBoardNameMap) {
+    // Финальная сборка CSV и скачивание. offBoardInfo: trello_card_id → { name, labels }.
+    async function finishExport(offBoardInfo) {
         const { exportData, hoursPerDay, allCards, includeEmpty } = pendingExport;
-        const onBoardNames = new Map(allCards.map(c => [c.id, c.name]));
+        const onBoardCards = new Map(allCards.map(c => [c.id, c]));
 
         const progressContainer = document.getElementById('progress-container');
         const progressBarFill = document.getElementById('progress-bar-fill');
         const progressStatus = document.getElementById('progress-status');
         progressContainer.style.display = 'block';
 
-        let csvContent = '"Date","Task","User","Time spent","Time spent (minutes)","Work description"\n';
+        let csvContent = '"Date","Task","Labels","User","Time spent","Time spent (minutes)","Work description"\n';
         let exportedRowsCount = 0;
 
         for (let cardIndex = 0; cardIndex < exportData.length; cardIndex++) {
             const { cardId, timeEntries } = exportData[cardIndex];
 
-            // Имя: с доски (без префикса) → из REST-карты (с [archived]/[deleted]) → legacy-фолбэк.
-            const cardName = onBoardNames.has(cardId)
-                ? onBoardNames.get(cardId)
-                : (offBoardNameMap[cardId] || `Card ${cardId}`);
+            // Имя и лейблы: с доски (имя без префикса) → из REST-карты (с [archived]/[deleted])
+            // → legacy-фолбэк. Лейблы всегда текущие: снимка на дату записи в БД нет.
+            const onBoardCard = onBoardCards.get(cardId);
+            const offBoardCard = offBoardInfo[cardId];
+            const cardName = onBoardCard
+                ? onBoardCard.name
+                : ((offBoardCard && offBoardCard.name) || `Card ${cardId}`);
+            const cardLabels = formatLabels(onBoardCard ? onBoardCard.labels : (offBoardCard && offBoardCard.labels));
 
             addDebugInfo(`Processing card ${cardIndex + 1}/${exportData.length}: ${cardName}`);
 
@@ -461,11 +484,11 @@
                     const timeMinutes = entry.time_minutes || 0;
                     const timeStr = TnMStorage.formatTime(timeMinutes, hoursPerDay);
 
-                    csvContent += `"${dateStr}","${csvCell(cardName)}","${csvCell(entry.member_name || 'User')}","${timeStr}","${timeMinutes}","${csvCell(entry.description || '')}"\n`;
+                    csvContent += `"${dateStr}","${csvCell(cardName)}","${csvCell(cardLabels)}","${csvCell(entry.member_name || 'User')}","${timeStr}","${timeMinutes}","${csvCell(entry.description || '')}"\n`;
                     exportedRowsCount++;
                 });
             } else if (includeEmpty) {
-                csvContent += `"","${csvCell(cardName)}","","0m","0",""\n`;
+                csvContent += `"","${csvCell(cardName)}","${csvCell(cardLabels)}","","0m","0",""\n`;
                 exportedRowsCount++;
             }
 

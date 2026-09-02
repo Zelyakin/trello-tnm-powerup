@@ -16,6 +16,8 @@ This is a Trello Power-Up for time tracking (T&M - Time & Materials) that uses S
 - Advanced caching with race condition protection (v3.1)
 - Archived/deleted card names in CSV export via Trello REST — opt-in, read-only (v3.3)
 - Timezone-correct calendar dates: `work_date` never shifts by a day for users west of UTC (v3.4)
+- Card labels in CSV export — read live from Trello, zero extra requests (v3.7)
+- Editing existing time entries in the card popup — time, date, member, description (v3.8)
 
 ## Architecture
 
@@ -98,7 +100,7 @@ js/
 └── board-members.js  - Board member utilities
 
 views/
-├── card-detail.html    - Time entry form (popup when clicking T&M button)
+├── card-detail.html    - Time entry form + editing of existing entries (popup when clicking T&M button)
 ├── card-back.html      - Summary displayed on card back
 ├── board-stats.html    - Board statistics with period filtering
 ├── export-time.html    - CSV export interface (+ Trello REST resolution of archived/deleted card names)
@@ -159,6 +161,18 @@ addTimeRecord(days, hours, minutes)
     → Sum all time_minutes
     → PATCH /cards (update time_minutes aggregate)
   → invalidateCardCache()
+```
+
+**Editing a time entry (v3.8)**:
+```
+updateTimeRecord(recordId, days, hours, minutes, ...)
+  → GET /board_settings - hours_per_day for the same d/h/m → minutes conversion as on add
+  → GET /cards?select=id&trello_card_id=eq.{id}
+  → PATCH /time_entries?id=eq.{recordId}&card_id=eq.{card_id}   (default return=representation)
+      ↳ [] in the response ⇒ the row is gone (deleted elsewhere) → invalidate cache, throw
+  → updateCardTotalTime()  → same recompute-and-PATCH as on add
+  → invalidateCardCache()
+  → popup: t.set('card','shared','tnm-lastUpdate') so the board iframe drops its badge cache
 ```
 
 **Board statistics (optimized v3.2)**:
@@ -284,6 +298,28 @@ this.invalidateCardCache(trelloCardId);
 
 Time entries use `trello_entry_id` (timestamp) with `UNIQUE(card_id, trello_entry_id)` constraint to prevent duplicates during race conditions.
 
+### 6a. Entry Identity: the PK, not `created_at` (v3.8)
+
+`getCardDataFull()` exposes `history[].id = time_entries.id` (the uuid PK) and both mutations
+address a row by it: `time_entries?id=eq.{id}&card_id=eq.{card_id}`.
+
+Until v3.8 the identity was `created_at` and deletion filtered on it. That survived only because
+DELETE is idempotent-ish in effect; `created_at` is `timestamp` **without** a uniqueness guarantee,
+and a PATCH on a non-unique filter silently rewrites *every* matching row. The `card_id` half of the
+filter is redundant for addressing (the PK is unique) — it is there so a stale id from another card
+cannot be touched, and it makes the intent explicit.
+
+Rules:
+- Never reintroduce `created_at` as an identifier. It stays in `history[].date` as the creation
+  timestamp, which is what the "Editing the entry added …" banner shows.
+- A mutation that finds **no** row must invalidate the card cache *before* throwing: the popup
+  reloads its history in the error handler, and without the reset it re-reads the very row that
+  no longer exists (its own cache is 60 s and cross-iframe deletions never reach it) — leaving
+  the form in edit mode on a ghost. Covered by `node tests/edit_entry_test.mjs`.
+- `created_at` and `trello_entry_id` are never part of the PATCH body: an edit changes what the
+  entry says, not the fact or the time of its creation (and `trello_entry_id` is the anti-duplicate
+  key for inserts).
+
 ### 7. Race Condition Protection (v3.1)
 
 **Problem**: When multiple cards load simultaneously, they all request the same board settings in parallel before the first request completes and caches the result.
@@ -355,7 +391,8 @@ The same embedded-JOIN pattern is used in `getAllDataForExport()` (with a parall
 ### 9. Off-board Card Name Resolution in Export (Trello REST)
 
 The CSV export ([views/export-time.html](views/export-time.html)) needs a human-readable name
-per card, but Supabase only stores `trello_card_id` — names come live from Trello. The client
+(and, since v3.7, the card's labels) per card, but Supabase only stores `trello_card_id` — both
+come live from Trello. The client
 method `t.cards('all')` returns **only open cards on the board**; archived and deleted cards
 are absent, so historically they exported as `Card <id>`.
 
@@ -377,10 +414,25 @@ Fix (this is the **only** place the Power-Up touches the Trello REST API):
   blocker. The `read` scope is account-wide (no per-board option); token stored by Trello's client
   lib (member-private), never by us. When the prompt shows, the filter form is hidden so it is not
   pushed below the fold.
-- Per off-board id: `GET /1/cards/{id}?fields=name,closed&key&token` →
+- Per off-board id: `GET /1/cards/{id}?fields=name,closed,labels&key&token` →
   `200 + closed:true` → `[archived] <name>`; `200 + closed:false` → plain `<name>` (moved to another
   board); `404` → `[deleted] <id>`. Any other status / declined auth / missing key → `Card <id>`
   fallback (export never breaks). Status is encoded as a name prefix — no separate CSV column.
+  `resolveOffBoardCards()` returns `id → { name, labels }`; the fallbacks carry `labels: []`, so a
+  degraded path yields an empty "Labels" cell rather than a broken export.
+
+**Labels column (v3.7)**: the `Labels` CSV column costs **zero** extra requests — for on-board cards
+the labels are already in the `t.cards('all')` response (the code simply reads `card.labels` now),
+and for off-board cards they ride along in the REST call that was already being made. Nothing is
+stored in Supabase. Consequences to keep in mind:
+- Labels are the card's **current** state, not a snapshot at `work_date` — `time_entries` has no
+  label history, and adding one would mean a schema change plus a write on every entry.
+- A label with no name is rendered as its color, `(green)`; a label with neither name nor color is
+  skipped (`formatLabels()`).
+- Labels for archived/deleted cards follow the same opt-in gate as names: no checkbox → empty cell.
+  A deleted card never has labels (404).
+- `card.labels` is read defensively (`Array.isArray`) — if Trello ever stops returning the field
+  from `t.cards('all')`, the column degrades to empty instead of throwing.
 
 ### 10. Date & Timezone Handling (v3.4)
 
@@ -474,8 +526,13 @@ Rules for anyone touching this:
 - Token cache is per context, refreshed 5 min before `exp`, with promise dedup — the ~270 badge
   callbacks of a large board trigger **one** exchange.
 - SQL lives in [supabase/sql/](supabase/sql/): `01` policies (idempotent, transactional),
-  `02` the anon cutover, `99` rollback. Tests: `deno run -A tests/rls_live_test.ts <board_id>`,
+  `02` the anon cutover, `03` the UPDATE policy on `time_entries` (added in v3.8 for entry
+  editing), `99` rollback. Tests: `deno run -A tests/rls_live_test.ts <board_id>`,
   `node tests/client_auth_test.mjs`, `deno run -A supabase/functions/trello-auth/smoke.ts`.
+- **A new write path needs its own policy.** `01` deliberately granted only SELECT/INSERT/DELETE;
+  editing stayed impossible server-side until `03` added UPDATE. Such a policy needs **both**
+  `using` (which row may be taken) and `with check` (what it may become) — with `using` alone a
+  PATCH could move an entry to another board by rewriting `card_id`.
 
 ## Performance Notes
 
