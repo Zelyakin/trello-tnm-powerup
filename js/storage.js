@@ -93,6 +93,41 @@ const TnMStorage = {
         });
     },
 
+    // Обновить существующую запись времени.
+    // recordId — id из истории (PK записи). Конвертация d/h/m → минуты идёт по ТЕКУЩЕЙ
+    // настройке доски, ровно как при добавлении: в БД лежат минуты, а d/h/m — лишь способ
+    // их ввести. Побочный эффект: запись, введённая как "1d" в 8-часовом режиме, откроется
+    // на редактирование как "8h" после переключения доски в 24-часовой — значение то же.
+    updateTimeRecord: function(t, recordId, days, hours, minutes, description, workDate, memberId, memberName) {
+        SupabaseAPI.useTrelloContext(t);
+
+        return Promise.all([
+            t.board('id'),
+            t.card('id')
+        ]).then(function([board, card]) {
+            return SupabaseAPI.getBoardSettings(board.id).then(function(settings) {
+                const hoursPerDay = settings.hours_per_day;
+
+                const totalMinutes = TnMStorage.parseTimeToMinutes(
+                    parseInt(days) || 0,
+                    parseInt(hours) || 0,
+                    parseInt(minutes) || 0,
+                    hoursPerDay
+                );
+
+                const entry = {
+                    timeMinutes: totalMinutes,
+                    description: description || '',
+                    workDate: workDate,
+                    memberId: memberId,
+                    memberName: memberName
+                };
+
+                return SupabaseAPI.updateTimeEntry(board.id, card.id, recordId, entry);
+            });
+        });
+    },
+
     // Удалить запись времени
     deleteTimeRecord: function(t, recordId) {
         SupabaseAPI.useTrelloContext(t);

@@ -370,11 +370,15 @@ const SupabaseAPI = {
 
             // Теперь получаем историю
             const timeEntries = await SupabaseAPI.request(
-                `time_entries?select=time_minutes,description,work_date,trello_member_id,member_name,trello_entry_id,created_at&card_id=eq.${card.id}&order=created_at.desc`
+                `time_entries?select=id,time_minutes,description,work_date,trello_member_id,member_name,trello_entry_id,created_at&card_id=eq.${card.id}&order=created_at.desc`
             );
 
+            // id записи — настоящий PK (uuid), а не created_at. Раньше идентификатором служил
+            // created_at, и удаление било по нему: для DELETE это сходило с рук, но UPDATE по
+            // неуникальному полю (timestamp without time zone, NOW() на вставке) молча правил бы
+            // ВСЕ совпавшие строки. created_at остаётся в date — как отметка времени создания.
             const history = timeEntries.map(entry => ({
-                id: entry.created_at,
+                id: entry.id,
                 type: 'time',
                 timeMinutes: entry.time_minutes || 0,
                 description: entry.description,
@@ -510,10 +514,10 @@ const SupabaseAPI = {
         }
     },
 
-    // Удаление записи времени
-    async deleteTimeEntry(boardId, trelloCardId, entryTimestamp) {
+    // Удаление записи времени по её PK (uuid из history[].id)
+    async deleteTimeEntry(boardId, trelloCardId, entryId) {
         try {
-            console.log('Deleting time entry from Supabase:', { boardId, trelloCardId, entryTimestamp });
+            console.log('Deleting time entry from Supabase:', { boardId, trelloCardId, entryId });
 
             // Ищем карточку без board_id
             const cards = await SupabaseAPI.request(
@@ -526,7 +530,9 @@ const SupabaseAPI = {
 
             const card = cards[0];
 
-            await SupabaseAPI.request(`time_entries?card_id=eq.${card.id}&created_at=eq.${entryTimestamp}`, {
+            // card_id в фильтре избыточен для адресации (id уникален), но страхует от правки
+            // чужой записи по протухшему id — и делает намерение явным.
+            await SupabaseAPI.request(`time_entries?id=eq.${entryId}&card_id=eq.${card.id}`, {
                 method: 'DELETE',
                 headers: {
                     'Prefer': 'return=minimal'
@@ -540,6 +546,75 @@ const SupabaseAPI = {
             return true;
         } catch (error) {
             console.error('Error deleting time entry:', error);
+            throw error;
+        }
+    },
+
+    // Редактирование существующей записи времени.
+    // entryId — PK из history[].id; entry — те же поля, что у addTimeEntry.
+    async updateTimeEntry(boardId, trelloCardId, entryId, entry) {
+        try {
+            console.log('Updating time entry in Supabase:', { boardId, trelloCardId, entryId, entry });
+
+            // Карточку ищем по trello_card_id (он уникален глобально) — нужен её PK
+            // для пересчёта агрегата и для страховочного фильтра в самом PATCH.
+            const cards = await SupabaseAPI.request(
+                `cards?select=id&trello_card_id=eq.${trelloCardId}`
+            );
+
+            if (cards.length === 0) {
+                throw new Error('Card not found');
+            }
+
+            const card = cards[0];
+
+            // created_at и trello_entry_id НЕ трогаем: первое — отметка создания записи,
+            // второе — ключ защиты от дублей при вставке. Правка меняет содержимое записи,
+            // а не факт и время её появления.
+            const entryData = {
+                trello_member_id: entry.memberId,
+                member_name: entry.memberName,
+                time_minutes: entry.timeMinutes || 0,
+                description: entry.description || ''
+            };
+
+            if (entry.workDate) {
+                entryData.work_date = entry.workDate.split('T')[0];
+            }
+
+            // Здесь нужен ответ (дефолтный return=representation): пустой массив означает,
+            // что строки уже нет — её удалили из другого контекста, пока попап был открыт.
+            // Без этой проверки правка "успешно" уходила бы в никуда.
+            const updated = await SupabaseAPI.request(
+                `time_entries?id=eq.${entryId}&card_id=eq.${card.id}`,
+                {
+                    method: 'PATCH',
+                    body: JSON.stringify(entryData)
+                }
+            );
+
+            if (!Array.isArray(updated) || updated.length === 0) {
+                // Кэш этого контекста заведомо протух: записи, которую мы только что держали
+                // в истории, в БД уже нет (удалили из другого iframe'а — его invalidateCardCache
+                // сюда не доходит). Сбрасываем ДО броска, иначе перезагрузка истории в
+                // обработчике ошибки достанет из кэша ту же исчезнувшую строку и попап
+                // останется в режиме правки несуществующей записи.
+                this.invalidateCardCache(trelloCardId);
+                // Вторая (и куда более вероятная на свежем окружении) причина пустого ответа —
+                // не применён 03_time_entries_update.sql: без политики UPDATE строка просто не
+                // видна для правки, PostgREST отвечает 200 и пустым массивом, а не ошибкой.
+                // Пользователю показывать это незачем, разработчику — обязательно.
+                console.warn('PATCH matched no rows: the entry is gone, or supabase/sql/03_time_entries_update.sql has not been applied');
+                throw new Error('Entry not found: it was probably deleted from another tab');
+            }
+
+            // ВАЖНО: сначала обновляем агрегаты, потом инвалидируем кеш
+            await SupabaseAPI.updateCardTotalTime(card.id);
+            this.invalidateCardCache(trelloCardId);
+
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating time entry:', error);
             throw error;
         }
     },

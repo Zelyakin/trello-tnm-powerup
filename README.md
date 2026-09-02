@@ -8,6 +8,7 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
 - 📅 Select work date via calendar
 - 👥 Select user on behalf of whom time will be added (current user by default)
 - 📝 History of all entries with user and date indication
+- ✏️ Editing of existing entries — time, work date, user and description
 - 🗑️ Ability to delete time entries from history
 - 📊 Export time tracking data to CSV file with date filtering, including each card's labels
 - ☁️ Cloud storage via Supabase for reliable data persistence
@@ -37,7 +38,10 @@ This is a Power-Up for Trello that allows you to track time spent on cards with 
    - Examples: "2h 30m", "1d", "45m", "1d 6h"
    - Note: 1 day = 8 hours (workday mode) or 24 hours (calendar mode, configurable in settings)
 6. View time summary on the back of the card
-7. If needed, delete incorrect entries using the "Delete" button in the "History" section
+7. If needed, fix an entry with the "Edit" button in the "History" section: the form switches to
+   edit mode (time, work date, user and description), "Save changes" overwrites the entry in place
+   and returns you to the history. "Cancel" leaves it untouched
+8. If needed, delete incorrect entries using the "Delete" button in the "History" section
 
 ### Exporting Time Tracking Data
 
@@ -398,7 +402,18 @@ The `board_id` is only needed when creating a new card record.
 
 ## Changelog
 
-### Version 3.7 (Current) - Labels in Export
+### Version 3.8 (Current) - Editing Time Entries
+
+**New features:**
+- ✅ **Existing entries can be edited**: "Edit" next to each entry in the card's History opens it in the same form — time, work date, user and description. Saving overwrites the entry and keeps you in the history so the result is visible right away
+- ✅ The author of an entry who has since left the board is preserved: they stay selected in the user list (marked "not on the board") instead of being silently replaced by the current user
+
+**Notes:**
+- **Requires one SQL step**: apply [supabase/sql/03_time_entries_update.sql](supabase/sql/03_time_entries_update.sql) — until then the database rejects edits (the original policies allowed only insert and delete). Nothing else changes: no schema migration, no data migration
+- Every board member can edit any entry, including someone else's — the same rule that already applies to deletion. Edits leave no audit trail, so if the export goes to a client, treat this as you would deletion
+- An entry deleted in another tab while you were editing it produces a clear error and the history reloads, instead of a silent no-op
+
+### Version 3.7 - Labels in Export
 
 **New features:**
 - ✅ **Card labels in the CSV export**: a new "labels" column (right after "task") lists the card's Trello labels, separated by `; `. A label with no name is shown as its color, e.g. `(green)`
